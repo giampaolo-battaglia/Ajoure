@@ -1,0 +1,14 @@
+{
+  "name": "ajoure",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Ajouré — prepare AI-generated images for fully cut-out laser pieces",
+  "type": "module",
+  "scripts": {
+    "start": "node tools/serve.mjs",
+    "test": "node --test \"tests/**/*.test.mjs\""
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

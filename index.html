@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light dark" />
+  <title>Ajouré</title>
+  <link rel="icon" href="assets/mark.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="styles/app.css" />
+</head>
+<body>
+  <!-- Shared icon symbols (20×20, 1.5 stroke) -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-mark" viewBox="0 0 20 20">
+        <path fill="currentColor" fill-rule="evenodd" d="M5 2h10a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V5a3 3 0 0 1 3-3zM10 4.6c1.9 1.6 1.9 3.6 0 5.2-1.9-1.6-1.9-3.6 0-5.2zM10 10.2c1.9 1.6 1.9 3.6 0 5.2-1.9-1.6-1.9-3.6 0-5.2zM4.6 10c1.6-1.9 3.6-1.9 5.2 0-1.6 1.9-3.6 1.9-5.2 0zM10.2 10c1.6-1.9 3.6-1.9 5.2 0-1.6 1.9-3.6 1.9-5.2 0z"/>
+      </symbol>
+      <symbol id="i-hand" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M7 10.5V4.6a1.25 1.25 0 0 1 2.5 0V9M9.5 8.8V3.4a1.25 1.25 0 0 1 2.5 0V9M12 8.8V4.6a1.25 1.25 0 0 1 2.5 0V11c0 3.6-2.2 6-5.3 6-2 0-3.2-.9-4.3-2.4l-2-3a1.3 1.3 0 0 1 2.1-1.5L7 12"/>
+      </symbol>
+      <symbol id="i-bucket" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3.9 9.4 9 4.3l6 6-5.1 5.1a1.5 1.5 0 0 1-2.1 0L3.9 11.5a1.5 1.5 0 0 1 0-2.1zM4 10.3h11M7.2 2.5l2.2 2.2M16.6 13.4s1.5 1.8 1.5 2.8a1.5 1.5 0 0 1-3 0c0-1 1.5-2.8 1.5-2.8z"/>
+      </symbol>
+      <symbol id="i-brush" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="m14 3 2.4 2.4-6.2 6.2-2.4-2.4zM7.6 10.6c-2 0-3.1 1.2-3.1 2.8 0 1.2-.7 2-1.9 2.5 1 .5 2.2.8 3.3.8 2.2 0 3.6-1.5 3.6-3.5"/>
+      </symbol>
+      <symbol id="i-connector" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+        <circle cx="4.5" cy="15.5" r="2"/><circle cx="15.5" cy="4.5" r="2"/><path d="M6.2 14.2c2.6-.6 1.4-6.8 7.6-8.4"/>
+      </symbol>
+      <symbol id="i-scissors" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+        <circle cx="6" cy="15" r="2.2"/><circle cx="14" cy="15" r="2.2"/><path d="M7.4 13.3 15 3.5M12.6 13.3 5 3.5"/>
+      </symbol>
+      <symbol id="i-revert" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M5 7.5h7a4 4 0 0 1 0 8H8M7.6 4.8 5 7.5l2.6 2.6"/>
+      </symbol>
+      <symbol id="i-zoom" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+        <circle cx="8.5" cy="8.5" r="5.2"/><path d="m12.3 12.3 4.4 4.4"/>
+      </symbol>
+      <symbol id="i-drop" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round">
+        <path d="M10 2.8s5 5.4 5 9a5 5 0 0 1-10 0c0-3.6 5-9 5-9z"/>
+      </symbol>
+      <symbol id="i-export" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M10 12.5V3M6.6 6.4 10 3l3.4 3.4M4 11.5v3.8c0 .9.7 1.7 1.7 1.7h8.6c1 0 1.7-.8 1.7-1.7v-3.8"/>
+      </symbol>
+      <symbol id="i-chevron" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="m4.5 3 3 3-3 3"/>
+      </symbol>
+      <symbol id="i-caret" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+        <path d="m3.5 4.8 2.5 2.5 2.5-2.5"/>
+      </symbol>
+      <symbol id="i-fit" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3.5 7.5v-4h4M12.5 3.5h4v4M16.5 12.5v4h-4M7.5 16.5h-4v-4"/>
+      </symbol>
+      <symbol id="i-minus"viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 6h6"/></symbol>
+      <symbol id="i-plus" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 6h6M6 3v6"/></symbol>
+    </defs>
+  </svg>
+
+  <div class="app" id="app" data-state="empty">
+    <!-- Top bar -->
+    <header class="topbar">
+      <div class="tb-group tb-left">
+        <svg class="mark" aria-hidden="true"><use href="#i-mark"/></svg>
+        <span class="doc-name" id="docName">Ajouré</span>
+        <span class="tb-divider" aria-hidden="true"></span>
+        <button class="chip" aria-disabled="true" data-tip="Material" data-sub="Coming in a later build" data-side="bottom">
+          3 mm basswood <svg class="caret"><use href="#i-caret"/></svg>
+        </button>
+        <button class="chip" aria-disabled="true" data-tip="Piece width" data-sub="Coming in a later build" data-side="bottom">
+          Width 50 mm <span class="badge">est</span>
+        </button>
+      </div>
+
+      <div class="tb-group tb-center">
+        <div class="segmented" role="radiogroup" aria-label="View">
+          <button role="radio" aria-checked="true" data-tip="Design view" data-side="bottom">Design</button>
+          <button role="radio" aria-checked="false" aria-disabled="true" data-tip="Wood / hole view" data-sub="Coming in a later build" data-side="bottom">Wood/Hole</button>
+          <button role="radio" aria-checked="false" aria-disabled="true" data-tip="Cut preview" data-sub="Coming in a later build" data-side="bottom">Cut</button>
+        </div>
+      </div>
+
+      <div class="tb-group tb-right">
+        <button class="btn" aria-disabled="true" data-tip="Flow test" data-key="T" data-sub="Coming in a later build" data-side="bottom">
+          <svg><use href="#i-drop"/></svg> Flow test
+        </button>
+        <button class="btn btn-primary" aria-disabled="true" data-tip="Export SVG" data-key="⇧⌘E" data-sub="Coming in a later build" data-side="bottom">
+          <svg><use href="#i-export"/></svg> Export SVG
+        </button>
+      </div>
+    </header>
+
+    <!-- Tools -->
+    <nav class="toolbar" aria-label="Tools">
+      <button class="tool" data-tool="hand" aria-pressed="true" data-tip="Hand" data-key="H" data-side="right"><svg><use href="#i-hand"/></svg></button>
+      <button class="tool" data-tool="bucket" aria-disabled="true" data-tip="Bucket" data-key="B" data-sub="Coming in a later build" data-side="right"><svg><use href="#i-bucket"/></svg></button>
+      <button class="tool tool-wood" data-tool="wood" aria-disabled="true" data-tip="Wood brush" data-key="W" data-sub="Coming in a later build" data-side="right"><svg><use href="#i-brush"/></svg><i class="swatch"></i></button>
+      <button class="tool tool-hole" data-tool="hole" aria-disabled="true" data-tip="Hole brush" data-key="E" data-sub="Coming in a later build" data-side="right"><svg><use href="#i-brush"/></svg><i class="swatch"></i></button>
+      <span class="tool-divider" aria-hidden="true"></span>
+      <button class="tool" data-tool="connector" aria-disabled="true" data-tip="Connector" data-key="C" data-sub="Coming in a later build" data-side="right"><svg><use href="#i-connector"/></svg></button>
+      <button class="tool" data-tool="separator" aria-disabled="true" data-tip="Separator" data-key="X" data-sub="Coming in a later build" data-side="right"><svg><use href="#i-scissors"/></svg></button>
+      <button class="tool" data-tool="revert" aria-disabled="true" data-tip="Revert brush" data-key="R" data-sub="Coming in a later build" data-side="right"><svg><use href="#i-revert"/></svg></button>
+      <span class="tool-divider" aria-hidden="true"></span>
+      <button class="tool" data-tool="zoom" aria-pressed="false" data-tip="Zoom" data-key="Z" data-sub="Click to zoom in · ⌥-click out · drag to scrub" data-side="right"><svg><use href="#i-zoom"/></svg></button>
+    </nav>
+
+    <!-- Canvas -->
+    <main class="stage" id="stage" data-cursor="default">
+      <canvas id="view" class="view" aria-label="Design canvas"></canvas>
+
+      <div class="empty" id="empty">
+        <div class="drop-card">
+          <svg class="drop-mark" aria-hidden="true"><use href="#i-mark"/></svg>
+          <h1>Drop an image to begin</h1>
+          <p>PNG, JPG or WebP — line art or filled designs.</p>
+          <div class="drop-actions">
+            <button class="btn btn-primary" id="openBtn">Open…</button>
+            <button class="btn" id="sampleBtn">Try the Julie sample</button>
+          </div>
+          <p class="drop-keys"><kbd>⌘O</kbd> open <span aria-hidden="true">·</span> <kbd>⌘V</kbd> paste</p>
+        </div>
+      </div>
+
+      <div class="drop-overlay" aria-hidden="true"><span>Drop to open</span></div>
+      <div class="zoom-pill" id="zoomPill" aria-live="polite"></div>
+      <div class="view-ctl" id="viewCtl" data-visible="false">
+        <button class="view-ctl-btn" id="actualBtn" data-tip="Actual pixels" data-key="⌘1" data-side="top" aria-label="Zoom to 100%">100%</button>
+        <button class="view-ctl-btn" id="fitBtn" data-tip="Fit to window" data-key="⌘0" data-side="top" aria-label="Fit to window"><svg><use href="#i-fit"/></svg></button>
+      </div>
+      <div class="hint" id="hint" role="status"></div>
+    </main>
+
+    <!-- Sidebar -->
+    <aside class="sidebar" aria-label="Inspector">
+      <section class="panel" data-open="true">
+        <button class="panel-head" aria-expanded="true"><svg class="chev"><use href="#i-chevron"/></svg>Navigator</button>
+        <div class="panel-body">
+          <div class="nav-well" id="navWell">
+            <canvas id="navCanvas" class="nav-canvas"></canvas>
+            <span class="nav-empty">No image</span>
+          </div>
+          <div class="zoom-row">
+            <button class="icon-btn" id="zoomOut" data-tip="Zoom out" data-key="⌘−" data-side="bottom" aria-label="Zoom out"><svg><use href="#i-minus"/></svg></button>
+            <input type="range" id="zoomSlider" min="0" max="1000" step="1" value="500" aria-label="Zoom" />
+            <button class="icon-btn" id="zoomIn" data-tip="Zoom in" data-key="⌘+" data-side="bottom" aria-label="Zoom in"><svg><use href="#i-plus"/></svg></button>
+            <input type="text" id="zoomField" class="zoom-field" inputmode="decimal" value="100%" aria-label="Zoom percent" spellcheck="false" />
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" data-open="true">
+        <button class="panel-head" aria-expanded="true"><svg class="chev"><use href="#i-chevron"/></svg>Issues</button>
+        <div class="panel-body">
+          <p class="muted">Leaks, islands and thin spots will be pinned here after a scan.</p>
+        </div>
+      </section>
+
+      <section class="panel" data-open="false">
+        <button class="panel-head" aria-expanded="false"><svg class="chev"><use href="#i-chevron"/></svg>Adjust</button>
+        <div class="panel-body">
+          <p class="muted">Threshold, contrast and line weight — coming in a later build.</p>
+        </div>
+      </section>
+    </aside>
+  </div>
+
+  <input type="file" id="fileInput" accept="image/png,image/jpeg,image/webp" hidden />
+  <div class="tooltip" id="tooltip" role="tooltip"></div>
+  <div class="toast" id="toast" role="alert"></div>
+
+  <script type="module" src="src/app/main.js"></script>
+</body>
+</html>
