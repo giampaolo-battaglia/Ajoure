@@ -29,12 +29,13 @@
 ## Layout
 - `docs/SPEC.md` — product + technical spec v0.3
 - `_backbone/` — this file, STATE, DECISIONS, CHANGELOG, feature specs
-- `index.html`, `styles/` — app shell (planned)
-- `src/app/` — UI: canvas view, tools, panels (planned)
-- `src/engine/` — pure analysis: threshold, regions, classification, issues, export (planned)
-- `src/worker/` — Worker entry that wraps the engine (planned)
+- `index.html`, `styles/` — app shell
+- `src/app/` — UI: canvas view, input, Navigator, scanner bridge, panels
+- `src/engine/` — pure analysis: threshold, regions, wood/hole guess, leaks, islands (`analyze.js` is the entry)
+- `src/worker/` — Worker entry that wraps the engine
 - `vendor/` — vendored third-party JS (planned)
-- `tests/`, `fixtures/` — Node tests and test images incl. Julie (planned)
+- `tests/`, `fixtures/` — Node tests (incl. Julie acceptance vs hand-made) and test images
+- `tools/` — `serve.mjs` (npm start), `scan.mjs` (scan an image from Terminal)
 
 ## Not doing (v1)
 - Accounts, cloud, payments, AI generation

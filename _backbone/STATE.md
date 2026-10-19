@@ -1,31 +1,28 @@
-# State — updated 2026-10-18
+# State — updated 2026-10-19
 
 ## Working
-- App shell (spec 001): window layout, empty-state drop zone, drop / paste / ⌘O / Julie sample loading.
-- Zoom & pan: pinch, two-finger pan, wheel zoom to cursor, middle-drag, Space-drag, Zoom tool (click/⌥-click/scrub), ⌘+/⌘−/⌘0/⌘1/⌘2, 5%–6400%, pixel grid above 800%.
-- Navigator: thumbnail, draggable viewport rect, click-to-jump, scroll-to-zoom, log slider, editable %.
-- Light/dark, reduced motion, tooltips with shortcuts, one-time navigation hint.
-- `npm start` (zero-dependency server, auto-opens browser), `npm test` (9 viewport tests), JSDoc type-check clean.
-- Verified in headless Chromium (no console errors). Not yet tried on Giampi's Mac with real trackpad/mouse or in Safari.
+- Milestone 1 (spec 001): window layout, drop / paste / ⌘O / Julie sample, zoom & pan (trackpad, mouse, Space-drag, Zoom tool, ⌘ and ⌃⌘ shortcuts, bare +/−), Fit/100% buttons, Navigator, light/dark, tooltips.
+- Milestone 2 (spec 002): instant scan in a Web Worker on every image — ink threshold, regions, waste, wood/hole guess, leaks (stroke-end gaps + necks), islands, specks.
+- Scan UI: top-bar summary ("2 leaks · 1 island"), pins on canvas + Navigator dots, Issues list in plain words, click pin/row → glide & highlight (Esc clears), Wood/Hole view.
+- Julie: 2 leaks (the two pockets sealed by hand) + 1 island (the i dot); 99.9% pixel match with the hand-made result once leaks are closed; ~0.7–1 s in Node, ~1.6 s in the browser.
+- `npm test`: 24 tests (viewport, engine on synthetic drawings, Julie acceptance). `node tools/scan.mjs <image>` prints a scan and writes out/scan.png.
+- `Start Ajoure.command` double-click launcher.
 
 ## In flight
-- Spec 001 built; waiting for Giampi's hands-on check (trackpad vs mouse-wheel detection is the main risk).
+- Milestone 2 built; waiting for Giampi's hands-on check on his own images.
 
 ## Next up
-1. Giampi tries milestone 1 on his Mac (Chrome + Safari, trackpad + mouse); fix anything that feels off.
-2. Write spec 002 — engine core (SPEC 8.1–8.6) against Julie: threshold, regions, wood/hole guess, outer cut, islands, both leak kinds → pins, scored automatically vs the hand-made result.
-3. Fixing tools: Bucket with hover preview, wood/hole brush, connector, separator, undo/redo.
-4. Flow test (Quick, then animated).
-5. Dimension checks, Adjust panel, finishing details, size, cut preview, SVG export, test cut.
+1. Giampi tries the scan on Julie and 2–3 other AI images; collect misses (false leaks, wrong wood/hole guesses).
+2. Milestone 3 — Issues & focus: Fix tray, N/P next/previous, Ignore, resolved/ignored pin states, pin clustering when zoomed out.
+3. Milestone 4 — Fixing tools: Bucket (hover preview shows leak spill), wood/hole brush, connector, separator, revert, undo/redo, live re-scan.
+4. Milestone 5 — Flow test (Quick, then animated water).
+5. Milestone 6 — Adjust panel + thin wood / near-touch / speck-hole checks + real size.
+6. Milestone 7 — Floating details, outer-cut confirm, cut preview, SVG export for XCS, project save; then a real cut.
 
 ## Known broken
-- n/a
-
-## Notes for the engine milestone (from the Julie first look, 2026-10-18)
-- Input 1024×1536, ink threshold 128 works; strokes ~6 px wide; only 70 regions (4-connectivity).
-- The hand-made result aligns to the input by bounding box (scale ≈1.10) → it can be scored automatically (acceptance tests 2–3).
-- The whole wood network (frame band, vines, leaf interiors, some petals) is one connected region, which is expected and correct.
-- Two kinds of leaks the hand-made fixed: (a) hole areas connected into the wood network (2 spots, critical); (b) one hole region the user split into several holes by closing lines (3 regions, ~6 gaps). Engine must detect both.
+- Wood/hole guess is tuned on one image (Julie); expect misses on other styles — the Bucket (milestone 4) is the safety net.
+- Only mm-estimated scale (50 mm wide) until size entry exists; leak widths shown in mm are estimates.
+- Filled (silhouette) art: treated as dark = wood; no leak detection yet in that mode.
 
 ## Open questions
-- None blocking.
+- Julie's i dot is a real island in the hand-made file too: was it glued, bridged, or did it fall out? (Decides whether "island" should default to bridge or drop.)

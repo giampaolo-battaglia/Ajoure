@@ -117,7 +117,10 @@ export class Navigator {
     let rw = (Math.min(this.tw, x + w) - Math.max(0, x)) * dpr;
     let rh = (Math.min(this.th, y + h) - Math.max(0, y)) * dpr;
     const covers = x <= 0.5 && y <= 0.5 && x + w >= this.tw - 0.5 && y + h >= this.th - 0.5;
-    if (covers || rw <= 0 || rh <= 0) return;
+    if (covers || rw <= 0 || rh <= 0) {
+      this.drawDots();
+      return;
+    }
     // Deep zooms would shrink the rectangle to a speck; keep it findable.
     const min = 8 * dpr;
     if (rw < min) { rx -= (min - rw) / 2; rw = min; }
@@ -133,6 +136,23 @@ export class Navigator {
     ctx.lineWidth = 1.5 * dpr;
     ctx.strokeRect(rx + 0.75 * dpr, ry + 0.75 * dpr, Math.max(0, rw - 1.5 * dpr), Math.max(0, rh - 1.5 * dpr));
     ctx.restore();
+    this.drawDots();
+  }
+
+  /** Issue dots, so you always see where problems are even when zoomed deep into one. */
+  drawDots() {
+    const { ctx, dpr, k } = this;
+    const cs = this.view.colors;
+    for (const i of this.view.issues) {
+      if (i.status !== 'open') continue;
+      ctx.beginPath();
+      ctx.arc(i.anchor[0] * k * dpr, i.anchor[1] * k * dpr, 3 * dpr, 0, Math.PI * 2);
+      ctx.fillStyle = i.severity === 'critical' ? cs.critical : i.severity === 'warning' ? cs.warning : cs.info;
+      ctx.fill();
+      ctx.lineWidth = 1.25 * dpr;
+      ctx.strokeStyle = '#fff';
+      ctx.stroke();
+    }
   }
 
   updateControls() {

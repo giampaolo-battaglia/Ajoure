@@ -15,7 +15,8 @@ export class NavigationInput {
   /**
    * @param {HTMLElement} stage
    * @param {CanvasView} view
-   * @param {{onToolChange: (t: ToolId) => void}} hooks
+   * @param {{onToolChange: (t: ToolId) => void, onClick?: (x: number, y: number) => boolean}} hooks
+   *   onClick: a click (no drag) on the canvas; return true if it was handled (e.g. a pin)
    */
   constructor(stage, view, hooks) {
     this.stage = stage;
@@ -30,6 +31,7 @@ export class NavigationInput {
     this.lastWheel = 0;
     this.lastWasMouse = false;
     this.gesture = /** @type {null | {scale0:number}} */ (null);
+    this.overPin = false;
     this.bind();
     this.updateCursor();
   }
@@ -49,7 +51,9 @@ export class NavigationInput {
 
   updateCursor() {
     let c = 'default';
-    if (this.drag?.kind === 'pan') c = 'grabbing';
+    if (this.drag?.kind === 'pan' && this.drag.moved) c = 'grabbing';
+    else if (!this.drag && !this.space && this.overPin) c = 'pointer';
+    else if (this.drag?.kind === 'pan') c = 'grabbing';
     else if (this.drag?.kind === 'zoom' && this.drag.moved) c = 'ew-resize';
     else if (this.space || this.tool === 'hand') c = 'grab';
     else if (this.tool === 'zoom') c = this.alt ? 'zoom-out' : 'zoom-in';
@@ -178,9 +182,25 @@ export class NavigationInput {
   /** @param {PointerEvent} e */
   onPointerMove(e) {
     const d = this.drag;
-    if (!d || e.pointerId !== d.id) return;
+    if (!d) {
+      // Hovering: show a pointer over pins.
+      if (e.target === this.view.canvas) {
+        const p = this.local(e);
+        const over = !!this.view.pinAt(p.x, p.y);
+        if (over !== this.overPin) {
+          this.overPin = over;
+          this.updateCursor();
+        }
+      }
+      return;
+    }
+    if (e.pointerId !== d.id) return;
     const p = this.local(e);
     if (d.kind === 'pan') {
+      if (!d.moved && Math.hypot(p.x - d.sx, p.y - d.sy) > 3) {
+        d.moved = true;
+        this.updateCursor();
+      }
       this.view.pan(p.x - d.x, p.y - d.y);
     } else {
       if (!d.moved && Math.abs(p.x - d.sx) > 3) {
@@ -201,6 +221,10 @@ export class NavigationInput {
     const d = this.drag;
     if (!d || e.pointerId !== d.id) return;
     this.drag = null;
+    if (!d.moved && e.type === 'pointerup' && this.hooks.onClick?.(d.sx, d.sy)) {
+      this.updateCursor();
+      return;
+    }
     if (d.kind === 'zoom' && !d.moved && e.type === 'pointerup') {
       const dir = d.alt || e.altKey ? -1 : 1;
       this.view.glideTo(stepScale(this.view.current().scale, dir), { x: d.sx, y: d.sy });

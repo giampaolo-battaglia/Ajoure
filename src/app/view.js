@@ -9,6 +9,10 @@ import {
 
 const GLIDE_MS = 160;
 const GRID_FROM = 8; // pixel grid appears above 800%
+const PIN_R = 9; // pin radius, CSS px
+
+/** @typedef {import('../engine/analyze.js').Issue} Issue */
+/** @typedef {'design'|'woodhole'} ViewMode */
 
 export class CanvasView {
   /** @param {HTMLCanvasElement} canvas @param {HTMLElement} host */
@@ -30,10 +34,22 @@ export class CanvasView {
     this.anim = null;
     this.reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
     this.colors = readColors();
+    /** @type {ViewMode} */
+    this.mode = 'design';
+    /** @type {ImageBitmap|null} wood/hole picture built from the scan */
+    this.woodHole = null;
+    /** @type {Issue[]} */
+    this.issues = [];
+    /** @type {string|null} */
+    this.focusId = null;
+    /** @type {CanvasPattern|null} */
+    this.checker = null;
+    this.checkerDpr = 0;
 
     new ResizeObserver(() => this.resize()).observe(host);
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
       this.colors = readColors();
+      this.checker = null;
       this.requestRender();
     });
     this.resize();
@@ -51,6 +67,10 @@ export class CanvasView {
   setImage(bitmap) {
     this.image = bitmap;
     this.anim = null;
+    this.issues = [];
+    this.focusId = null;
+    if (this.woodHole) this.woodHole.close();
+    this.woodHole = null;
     this.v = fitView({ ...this.v, iw: bitmap.width, ih: bitmap.height });
     this.emit();
   }
@@ -70,6 +90,72 @@ export class CanvasView {
     this.v = { ...this.v, vw: w, vh: h };
     if (this.image) this.v = first ? fitView(this.v) : centerOn(this.v, cx, cy);
     this.emit();
+  }
+
+  // ---- analysis overlay ------------------------------------------------------
+
+  /**
+   * Show a scan: pins now, the wood/hole picture as soon as it's built.
+   * @param {{w:number, h:number, classMap: Uint8Array, issues: Issue[]}} res
+   */
+  async setAnalysis(res) {
+    this.issues = res.issues;
+    this.emit();
+    const { w, h, classMap } = res;
+    const data = new ImageData(w, h);
+    const px = new Uint32Array(data.data.buffer);
+    // Little-endian ABGR: wood white, lines near-black, holes grey, waste transparent.
+    const COLORS = [0x00000000, 0xffffffff, 0xff645f5f, 0xff2e2c2c];
+    for (let i = 0; i < classMap.length; i++) px[i] = COLORS[classMap[i]];
+    const bmp = await createImageBitmap(data);
+    if (this.woodHole) this.woodHole.close();
+    this.woodHole = bmp;
+    this.requestRender();
+  }
+
+  /** @param {ViewMode} mode */
+  setMode(mode) {
+    this.mode = mode;
+    this.requestRender();
+  }
+
+  /** @param {string|null} id */
+  setFocus(id) {
+    this.focusId = id;
+    this.requestRender();
+  }
+
+  /**
+   * The pin under a screen point, if any.
+   * @param {number} x @param {number} y
+   * @returns {Issue|null}
+   */
+  pinAt(x, y) {
+    const v = this.v;
+    let best = null;
+    let bestD = (PIN_R + 4) ** 2;
+    for (const i of this.issues) {
+      if (i.status !== 'open') continue;
+      const px = i.anchor[0] * v.scale + v.tx;
+      const py = i.anchor[1] * v.scale + v.ty;
+      const d = (px - x) ** 2 + (py - y) ** 2;
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    }
+    return best;
+  }
+
+  /** Glide so an issue sits in the middle, comfortably zoomed. @param {Issue} issue */
+  glideToIssue(issue) {
+    if (!this.image) return;
+    const from = this.current();
+    const [, , bw, bh] = issue.bbox;
+    const fill = 0.6;
+    let s = Math.min((from.vw * fill) / Math.max(bw, 1), (from.vh * fill) / Math.max(bh, 1));
+    s = Math.max(Math.min(s, 6), Math.min(from.scale, 6), 1);
+    this.startGlide(from, centerOn(from, issue.anchor[0], issue.anchor[1], s));
   }
 
   // ---- viewport changes -------------------------------------------------
@@ -192,11 +278,95 @@ export class CanvasView {
 
     const r = visibleImageRect(v);
     if (!r) return;
+    const showWood = this.mode === 'woodhole' && this.woodHole;
+    if (showWood && x1 > x0 && y1 > y0) {
+      // Waste shows as a quiet checkerboard (screen-space, so it doesn't swim when zooming).
+      ctx.fillStyle = this.checkerPattern();
+      ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+    }
     ctx.imageSmoothingEnabled = v.scale < 1;
     ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(image, r.x, r.y, r.w, r.h, ox + r.x * s, oy + r.y * s, r.w * s, r.h * s);
+    const src = showWood ? /** @type {ImageBitmap} */ (this.woodHole) : image;
+    ctx.drawImage(src, r.x, r.y, r.w, r.h, ox + r.x * s, oy + r.y * s, r.w * s, r.h * s);
 
     if (v.scale >= GRID_FROM) this.drawGrid(r, s, ox, oy);
+    this.drawPins();
+  }
+
+  drawPins() {
+    const { ctx, dpr, v } = this;
+    if (!this.issues.length) return;
+    const pad = 20;
+    for (const i of this.issues) {
+      if (i.status !== 'open') continue;
+      const x = (i.anchor[0] * v.scale + v.tx) * dpr;
+      const y = (i.anchor[1] * v.scale + v.ty) * dpr;
+      if (x < -pad * dpr || y < -pad * dpr || x > this.canvas.width + pad * dpr || y > this.canvas.height + pad * dpr) continue;
+      const focused = i.id === this.focusId;
+      const r = (focused ? PIN_R + 2 : PIN_R) * dpr;
+      const color = i.severity === 'critical' ? this.colors.critical : i.severity === 'warning' ? this.colors.warning : this.colors.info;
+      ctx.save();
+      if (focused) {
+        ctx.beginPath();
+        ctx.arc(x, y, r + 6 * dpr, 0, Math.PI * 2);
+        ctx.fillStyle = color + '33';
+        ctx.fill();
+      }
+      ctx.shadowColor = 'rgba(0,0,0,0.35)';
+      ctx.shadowBlur = 4 * dpr;
+      ctx.shadowOffsetY = 1 * dpr;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.shadowColor = 'transparent';
+      ctx.lineWidth = 2 * dpr;
+      ctx.strokeStyle = '#ffffff';
+      ctx.stroke();
+      // Glyph
+      ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = '#ffffff';
+      const u = r / PIN_R;
+      if (i.type === 'leak') {
+        // a drop
+        ctx.beginPath();
+        ctx.moveTo(x, y - 5 * u);
+        ctx.bezierCurveTo(x + 1.5 * u, y - 2.5 * u, x + 4 * u, y - 0.5 * u, x + 4 * u, y + 1.5 * u);
+        ctx.arc(x, y + 1.5 * u, 4 * u, 0, Math.PI, false);
+        ctx.bezierCurveTo(x - 4 * u, y - 0.5 * u, x - 1.5 * u, y - 2.5 * u, x, y - 5 * u);
+        ctx.fill();
+      } else if (i.type === 'island') {
+        // an island: dot inside a ring
+        ctx.lineWidth = 1.5 * u;
+        ctx.beginPath();
+        ctx.arc(x, y, 4.2 * u, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(x, y, 1.8 * u, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.beginPath();
+        ctx.arc(x, y, 2 * u, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+  }
+
+  checkerPattern() {
+    if (this.checker && this.checkerDpr === this.dpr) return this.checker;
+    const size = Math.round(8 * this.dpr);
+    const c = document.createElement('canvas');
+    c.width = c.height = size * 2;
+    const g = /** @type {CanvasRenderingContext2D} */ (c.getContext('2d'));
+    g.fillStyle = this.colors.checkerA;
+    g.fillRect(0, 0, size * 2, size * 2);
+    g.fillStyle = this.colors.checkerB;
+    g.fillRect(0, 0, size, size);
+    g.fillRect(size, size, size, size);
+    this.checker = /** @type {CanvasPattern} */ (this.ctx.createPattern(c, 'repeat'));
+    this.checkerDpr = this.dpr;
+    return this.checker;
   }
 
   /** @param {{x:number,y:number,w:number,h:number}} r @param {number} s @param {number} ox @param {number} oy */
@@ -235,5 +405,10 @@ function readColors() {
     stage: get('--stage', '#dcdce0'),
     pageShadow: get('--page-shadow', 'rgba(0,0,0,.2)'),
     grid: get('--grid', 'rgba(0,0,0,.15)'),
+    critical: get('--critical', '#e5484d'),
+    warning: get('--warning', '#f5a524'),
+    info: get('--info', '#3e8cf0'),
+    checkerA: get('--checker-a', '#e9e9ec'),
+    checkerB: get('--checker-b', '#dedee2'),
   };
 }

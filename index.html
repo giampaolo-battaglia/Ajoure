@@ -73,13 +73,14 @@
 
       <div class="tb-group tb-center">
         <div class="segmented" role="radiogroup" aria-label="View">
-          <button role="radio" aria-checked="true" data-tip="Design view" data-side="bottom">Design</button>
-          <button role="radio" aria-checked="false" aria-disabled="true" data-tip="Wood / hole view" data-sub="Coming in a later build" data-side="bottom">Wood/Hole</button>
+          <button role="radio" id="modeDesign" data-mode="design" aria-checked="true" data-tip="Design view" data-sub="Your image as it is" data-side="bottom">Design</button>
+          <button role="radio" id="modeWood" data-mode="woodhole" aria-checked="false" aria-disabled="true" data-tip="Wood / hole view" data-sub="White stays, grey is cut out — available after a scan" data-side="bottom">Wood/Hole</button>
           <button role="radio" aria-checked="false" aria-disabled="true" data-tip="Cut preview" data-sub="Coming in a later build" data-side="bottom">Cut</button>
         </div>
       </div>
 
       <div class="tb-group tb-right">
+        <div class="scan-status" id="scanStatus" data-state="idle" aria-live="polite"></div>
         <button class="btn" aria-disabled="true" data-tip="Flow test" data-key="T" data-sub="Coming in a later build" data-side="bottom">
           <svg><use href="#i-drop"/></svg> Flow test
         </button>
@@ -148,9 +149,11 @@
       </section>
 
       <section class="panel" data-open="true">
-        <button class="panel-head" aria-expanded="true"><svg class="chev"><use href="#i-chevron"/></svg>Issues</button>
+        <button class="panel-head" aria-expanded="true"><svg class="chev"><use href="#i-chevron"/></svg>Issues<span class="head-count" id="issueCount"></span></button>
         <div class="panel-body">
-          <p class="muted">Leaks, islands and thin spots will be pinned here after a scan.</p>
+          <div class="issue-list" id="issueList">
+            <p class="muted">Leaks and islands are pinned here as soon as you drop an image.</p>
+          </div>
         </div>
       </section>
 

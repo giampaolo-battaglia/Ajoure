@@ -1,6 +1,6 @@
 # 001 — App shell, image loading and canvas navigation
 
-**Status:** building (built 2026-10-18, awaiting hands-on check)
+**Status:** shipped (2026-10-18; Safari shortcut and Fit/100% follow-ups included)
 **Date:** 2026-10-18
 
 ## What it is

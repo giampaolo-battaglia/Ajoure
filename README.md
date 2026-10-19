@@ -29,8 +29,14 @@ npm test
 - `docs/SPEC.md` — the product spec
 - `_backbone/` — project state, decisions, changelog, feature specs
 - `src/app/` — the user interface
-- `src/engine/` — analysis (coming next)
+- `src/engine/` — analysis: wood/hole, leaks, islands (`node tools/scan.mjs fixtures/julie-input.png` to try it from Terminal)
 - `fixtures/` — test images (Julie input + hand-made result)
+
+## What the scan shows
+
+Drop an image and Ajouré scans it at once: the top bar sums up what it found, red pins mark
+**leaks** (a gap joining a hole to the wood) and **islands** (wood that would fall out),
+and **Wood/Hole** in the top bar shows what stays (white) and what gets cut (grey).
 
 ## Navigation cheat sheet
 
@@ -39,7 +45,8 @@ npm test
 | Zoom | Pinch | Scroll wheel | + / − (or ⌘+ / ⌘−) |
 | Pan | Two-finger scroll | Middle-drag | Hold Space + drag |
 | Fit / 100% / 200% | | Buttons at bottom right | ⌘0 / ⌘1 / ⌘2 |
+| Hand / Zoom tool | | | H / Z (⌥-click zooms out, drag to scrub) |
+| Jump to an issue | Click a pin or a row in Issues | | Esc to clear |
 
 **In Safari**, ⌘1, ⌘2, ⌘0 and ⌘+/⌘− belong to Safari itself, so use **⌃⌘** (Control+Command) instead:
 ⌃⌘0 fit, ⌃⌘1 100%, ⌃⌘2 200%, ⌃⌘+ / ⌃⌘− zoom. These work in Chrome too.
-| Hand / Zoom tool | | | H / Z (⌥-click zooms out, drag to scrub) |
