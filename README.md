@@ -34,9 +34,10 @@ npm test
 
 ## What the scan shows
 
-Drop an image and Ajouré scans it at once: the top bar sums up what it found, red pins mark
+Drop an image and Ajouré scans it at once: the top bar sums up what it found, red dotted boxes mark
 **leaks** (a gap joining a hole to the wood) and **islands** (wood that would fall out),
 and **Wood/Hole** in the top bar shows what stays (white) and what gets cut (grey).
+Prefer round pins? Open **Settings** (top-right button, or ⌘,) and pick **Pin**.
 
 ## Navigation cheat sheet
 

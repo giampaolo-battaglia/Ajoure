@@ -5,6 +5,9 @@ for the user, not which lines were edited.
 
 ---
 
+## 2026-10-20
+- Issue markers are now red dotted squares around each problem zone (tinted when selected); Settings (top-right button or ⌘,) lets you switch back to round pins. The choice is remembered.
+
 ## 2026-10-19
 - Milestone 2: dropping an image now scans it instantly and pins every leak and island; summary in the top bar, plain-words Issues list, click to glide to a problem, Wood/Hole view.
 - On Julie it finds both pockets sealed by hand and the loose i dot; its wood/hole map matches the hand-made result on 99.9% of pixels once the leaks are closed.

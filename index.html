@@ -51,7 +51,10 @@
       <symbol id="i-fit" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
         <path d="M3.5 7.5v-4h4M12.5 3.5h4v4M16.5 12.5v4h-4M7.5 16.5h-4v-4"/>
       </symbol>
-      <symbol id="i-minus"viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 6h6"/></symbol>
+      <symbol id="i-sliders" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+        <path d="M3.5 6h6M13.5 6h3M3.5 14h2M9.5 14h7"/><circle cx="11.5" cy="6" r="2"/><circle cx="7.5" cy="14" r="2"/>
+      </symbol>
+      <symbol id="i-minus" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 6h6"/></symbol>
       <symbol id="i-plus" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 6h6M6 3v6"/></symbol>
     </defs>
   </svg>
@@ -86,6 +89,9 @@
         </button>
         <button class="btn btn-primary" aria-disabled="true" data-tip="Export SVG" data-key="⇧⌘E" data-sub="Coming in a later build" data-side="bottom">
           <svg><use href="#i-export"/></svg> Export SVG
+        </button>
+        <button class="icon-btn tb-icon" id="settingsBtn" aria-label="Settings" aria-haspopup="dialog" aria-expanded="false" data-tip="Settings" data-key="⌘," data-side="bottom">
+          <svg><use href="#i-sliders"/></svg>
         </button>
       </div>
     </header>
@@ -167,6 +173,25 @@
   </div>
 
   <input type="file" id="fileInput" accept="image/png,image/jpeg,image/webp" hidden />
+  <div class="popover" id="settingsPop" role="dialog" aria-label="Settings">
+    <h2>Settings</h2>
+    <div class="setting">
+      <div class="setting-label">
+        <span>Issue markers</span>
+        <small>How leaks and islands are shown on the canvas</small>
+      </div>
+      <div class="segmented seg-choice" role="radiogroup" aria-label="Issue markers">
+        <button role="radio" data-markers="box" aria-checked="true">
+          <svg class="marker-preview" viewBox="0 0 22 22" aria-hidden="true"><g fill="currentColor"><circle cx="3" cy="3" r="1.2"/><circle cx="7" cy="3" r="1.2"/><circle cx="11" cy="3" r="1.2"/><circle cx="15" cy="3" r="1.2"/><circle cx="19" cy="3" r="1.2"/><circle cx="19" cy="7" r="1.2"/><circle cx="19" cy="11" r="1.2"/><circle cx="19" cy="15" r="1.2"/><circle cx="19" cy="19" r="1.2"/><circle cx="15" cy="19" r="1.2"/><circle cx="11" cy="19" r="1.2"/><circle cx="7" cy="19" r="1.2"/><circle cx="3" cy="19" r="1.2"/><circle cx="3" cy="15" r="1.2"/><circle cx="3" cy="11" r="1.2"/><circle cx="3" cy="7" r="1.2"/></g></svg>
+          Box
+        </button>
+        <button role="radio" data-markers="pin" aria-checked="false">
+          <svg class="marker-preview" viewBox="0 0 22 22" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="currentColor"/><circle cx="11" cy="11" r="7" fill="none" stroke="#fff" stroke-width="1.6"/></svg>
+          Pin
+        </button>
+      </div>
+    </div>
+  </div>
   <div class="tooltip" id="tooltip" role="tooltip"></div>
   <div class="toast" id="toast" role="alert"></div>
 

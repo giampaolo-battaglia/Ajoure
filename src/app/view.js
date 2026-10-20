@@ -10,6 +10,11 @@ import {
 const GLIDE_MS = 160;
 const GRID_FROM = 8; // pixel grid appears above 800%
 const PIN_R = 9; // pin radius, CSS px
+const BOX_MIN = 28; // smallest issue box, CSS px
+const BOX_PAD = 8; // breathing room around the issue zone, CSS px
+const DOT_GAP = 5; // spacing of the dots on a box outline, CSS px
+
+/** @typedef {'box'|'pin'} MarkerStyle */
 
 /** @typedef {import('../engine/analyze.js').Issue} Issue */
 /** @typedef {'design'|'woodhole'} ViewMode */
@@ -42,6 +47,8 @@ export class CanvasView {
     this.issues = [];
     /** @type {string|null} */
     this.focusId = null;
+    /** @type {MarkerStyle} how issues are drawn on the canvas */
+    this.markerStyle = 'box';
     /** @type {CanvasPattern|null} */
     this.checker = null;
     this.checkerDpr = 0;
@@ -125,14 +132,47 @@ export class CanvasView {
     this.requestRender();
   }
 
+  /** @param {MarkerStyle} style */
+  setMarkerStyle(style) {
+    this.markerStyle = style;
+    this.requestRender();
+  }
+
   /**
-   * The pin under a screen point, if any.
+   * Screen-space square around an issue's zone (CSS px), used by the "box" markers.
+   * @param {Issue} i
+   */
+  issueBox(i) {
+    const v = this.v;
+    const [bx, by, bw, bh] = i.bbox;
+    const cx = (bx + bw / 2) * v.scale + v.tx;
+    const cy = (by + bh / 2) * v.scale + v.ty;
+    const side = Math.max(BOX_MIN, Math.max(bw, bh) * v.scale + 2 * BOX_PAD);
+    return { x: cx - side / 2, y: cy - side / 2, side };
+  }
+
+  /**
+   * The issue marker under a screen point, if any (pin or box, whichever is showing).
    * @param {number} x @param {number} y
    * @returns {Issue|null}
    */
   pinAt(x, y) {
     const v = this.v;
     let best = null;
+    if (this.markerStyle === 'box') {
+      // Inside a box (with a little slack); the smallest box wins when they overlap.
+      let bestSide = Infinity;
+      for (const i of this.issues) {
+        if (i.status !== 'open') continue;
+        const b = this.issueBox(i);
+        const m = 4;
+        if (x >= b.x - m && x <= b.x + b.side + m && y >= b.y - m && y <= b.y + b.side + m && b.side < bestSide) {
+          bestSide = b.side;
+          best = i;
+        }
+      }
+      return best;
+    }
     let bestD = (PIN_R + 4) ** 2;
     for (const i of this.issues) {
       if (i.status !== 'open') continue;
@@ -294,8 +334,9 @@ export class CanvasView {
   }
 
   drawPins() {
-    const { ctx, dpr, v } = this;
     if (!this.issues.length) return;
+    if (this.markerStyle === 'box') return this.drawBoxes();
+    const { ctx, dpr, v } = this;
     const pad = 20;
     for (const i of this.issues) {
       if (i.status !== 'open') continue;
@@ -349,6 +390,56 @@ export class CanvasView {
         ctx.arc(x, y, 2 * u, 0, Math.PI * 2);
         ctx.fill();
       }
+      ctx.restore();
+    }
+  }
+
+  /** Issue zones as squares made of dots, in the severity colour. */
+  drawBoxes() {
+    const { ctx, dpr } = this;
+    const W = this.canvas.width / dpr;
+    const H = this.canvas.height / dpr;
+    for (const i of this.issues) {
+      if (i.status !== 'open') continue;
+      const b = this.issueBox(i);
+      if (b.x > W || b.y > H || b.x + b.side < 0 || b.y + b.side < 0) continue;
+      const focused = i.id === this.focusId;
+      const color = i.severity === 'critical' ? this.colors.critical : i.severity === 'warning' ? this.colors.warning : this.colors.info;
+      const r = (focused ? 1.9 : 1.5) * dpr;
+      ctx.save();
+      if (focused) {
+        ctx.fillStyle = color + '1f';
+        ctx.fillRect(b.x * dpr, b.y * dpr, b.side * dpr, b.side * dpr);
+      }
+      // Dots evenly spaced along each side, corners included.
+      const n = Math.max(4, Math.round(b.side / DOT_GAP));
+      const step = (b.side * dpr) / n;
+      const x0 = b.x * dpr;
+      const y0 = b.y * dpr;
+      const s = b.side * dpr;
+      /** @type {[number, number][]} */
+      const pts = [];
+      for (let k = 0; k < n; k++) {
+        pts.push([x0 + k * step, y0]);
+        pts.push([x0 + s, y0 + k * step]);
+        pts.push([x0 + s - k * step, y0 + s]);
+        pts.push([x0, y0 + s - k * step]);
+      }
+      // A soft white halo keeps the dots readable over black lines and grey holes alike.
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.beginPath();
+      for (const [px, py] of pts) {
+        ctx.moveTo(px + r + 0.9 * dpr, py);
+        ctx.arc(px, py, r + 0.9 * dpr, 0, Math.PI * 2);
+      }
+      ctx.fill();
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      for (const [px, py] of pts) {
+        ctx.moveTo(px + r, py);
+        ctx.arc(px, py, r, 0, Math.PI * 2);
+      }
+      ctx.fill();
       ctx.restore();
     }
   }

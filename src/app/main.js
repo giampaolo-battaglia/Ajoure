@@ -8,6 +8,7 @@ import { loadBlob, bindLoaders, fetchSample, LoadError } from './loader.js';
 import { bindTooltips, createToast, hintOnce, bindPanels } from './ui.js';
 import { formatPercent, fitView } from './viewport.js';
 import { Scanner } from './scanner.js';
+import { loadSettings, saveSettings, bindPopover } from './settings.js';
 
 const $ = (/** @type {string} */ id) => /** @type {HTMLElement} */ (document.getElementById(id));
 
@@ -250,6 +251,31 @@ window.addEventListener('keydown', (e) => {
   const t = /** @type {HTMLElement} */ (e.target);
   if (t.tagName === 'INPUT') return;
   if (e.key === 'Escape' && view.focusId) focusIssue(null);
+});
+
+// ---- settings ----------------------------------------------------------------------
+
+const settings = loadSettings();
+const settingsPop = bindPopover($('settingsBtn'), $('settingsPop'));
+const markerButtons = /** @type {NodeListOf<HTMLButtonElement>} */ (document.querySelectorAll('[data-markers]'));
+/** @param {'box'|'pin'} style */
+function applyMarkers(style) {
+  settings.markers = style;
+  view.setMarkerStyle(style);
+  for (const b of markerButtons) b.setAttribute('aria-checked', String(b.dataset.markers === style));
+}
+for (const b of markerButtons) {
+  b.addEventListener('click', () => {
+    applyMarkers(/** @type {'box'|'pin'} */ (b.dataset.markers));
+    saveSettings(settings);
+  });
+}
+applyMarkers(settings.markers);
+window.addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === ',') {
+    e.preventDefault();
+    settingsPop.open();
+  }
 });
 
 bindTooltips($('tooltip'));
