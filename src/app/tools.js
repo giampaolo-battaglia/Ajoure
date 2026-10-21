@@ -3,6 +3,8 @@
 // Works in image pixels; the document records the edits, the view shows them.
 
 import { EDIT_NONE, EDIT_WOOD, EDIT_HOLE, WOOD, HOLE, WASTE, BASSWOOD_3MM } from '../engine/analyze.js';
+import { pourOrder, wobble, Pour } from './water.js';
+import { visibleImageRect } from './viewport.js';
 
 /** @typedef {'hand'|'zoom'|'bucket'|'wood'|'hole'|'revert'|'connector'|'separator'} ToolId */
 /** @typedef {import('./doc.js').EditDoc} EditDoc */
@@ -58,6 +60,15 @@ export class ToolController {
     this.accent = [20, 133, 122];
     this.accentCss = '#14857a';
     this.pxPerMm = 0;
+    /** @type {'tint'|'water'} how the Bucket previews the area under the cursor */
+    this.preview = 'tint';
+    /** @type {Worker|null} computes the water's path for big areas */
+    this.waterWorker = null;
+    /** @type {ScanResult|null} scan whose labels the water worker holds */
+    this.waterScan = null;
+    this.pourId = 0;
+    /** @type {((d: {id: number, o: any}) => void)|undefined} */
+    this.waterDone = undefined;
     this.readAccent();
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => this.readAccent());
   }
@@ -242,19 +253,36 @@ export class ToolController {
     this.o.onBucket(r, cls, x, y);
   }
 
-  /** Tint the whole region under the cursor, so a leak shows as the tint spilling. @param {{x:number, y:number}} p */
+  /** @param {'tint'|'water'} style */
+  setPreview(style) {
+    this.preview = style;
+    this.clearHover();
+    if (this.tool === 'bucket' && this.last) this.hoverBucket(this.last);
+  }
+
+  /**
+   * Show the whole area under the cursor, so a leak shows as the preview spilling
+   * past the gap: a flat tint, or (Settings) water poured at the cursor.
+   * @param {{x:number, y:number}} p
+   */
   hoverBucket(p) {
     const scan = this.o.getScan();
     const view = this.o.view;
     if (!scan) return this.clearHover();
+    const water = this.preview === 'water';
     const x = Math.floor(p.x);
     const y = Math.floor(p.y);
     const r = x >= 0 && y >= 0 && x < scan.w && y < scan.h ? scan.labels[y * scan.w + x] : 0;
-    if (!r || scan.regionClass[r] === WASTE) return this.clearHover();
-    if (r === this.hoverRegion && view.hover) return;
+    // Water may run outside the piece too: that's how a hole open to the edge shows.
+    if (!r || (!water && scan.regionClass[r] === WASTE)) return this.clearHover();
+    if (r === this.hoverRegion) return; // same area: keep the preview (or the pour being worked out)
     this.hoverRegion = r;
     const boxes = this.regionBoxes(scan);
     const x0 = boxes[r * 4], y0 = boxes[r * 4 + 1], x1 = boxes[r * 4 + 2], y1 = boxes[r * 4 + 3];
+    if (water) {
+      this.pour(scan, r, [x0, y0, x1, y1], x, y, p);
+      return;
+    }
     const bw = x1 - x0 + 1;
     const bh = y1 - y0 + 1;
     const c = document.createElement('canvas');
@@ -281,7 +309,46 @@ export class ToolController {
     view.requestRender();
   }
 
+  /**
+   * Pour water at (x, y) in region r. Small areas are worked out at once; big ones
+   * (the space around the piece) in a worker, so the cursor never stalls.
+   * @param {ScanResult} scan @param {number} r @param {[number, number, number, number]} box
+   * @param {number} x @param {number} y @param {{x:number, y:number}} p
+   */
+  pour(scan, r, box, x, y, p) {
+    const view = this.o.view;
+    const id = ++this.pourId;
+    view.hover = null;
+    const start = (/** @type {ReturnType<typeof pourOrder>} */ order) => {
+      if (id !== this.pourId || this.hoverRegion !== r || this.o.getScan() !== scan) return;
+      const calm = view.reduceMotion.matches;
+      const pour = new Pour(order, box[0], box[1], view.viewport.scale, calm, visibleImageRect(view.viewport));
+      view.hover = {
+        canvas: pour.canvas, x: box[0], y: box[1],
+        tick: (now) => pour.tick(now),
+        ripple: calm ? undefined : { x: p.x, y: p.y, t0: pour.t0 },
+      };
+      view.requestRender();
+    };
+    const area = (box[2] - box[0] + 1) * (box[3] - box[1] + 1);
+    if (area < 250_000 || typeof Worker === 'undefined') {
+      start(wobble(pourOrder(scan.labels, scan.w, r, box, x, y), box[0], box[1], view.viewport.scale));
+      return;
+    }
+    if (!this.waterWorker) {
+      this.waterWorker = new Worker(new URL('../worker/water.worker.js', import.meta.url), { type: 'module' });
+      this.waterWorker.onmessage = (e) => this.waterDone?.(e.data);
+    }
+    if (this.waterScan !== scan) {
+      this.waterWorker.postMessage({ kind: 'labels', labels: scan.labels, w: scan.w });
+      this.waterScan = scan;
+    }
+    this.waterDone = (d) => d.id === id && start(d.o);
+    this.waterWorker.postMessage({ kind: 'pour', id, r, box, sx: x, sy: y, scale: view.viewport.scale });
+  }
+
   clearHover() {
+    this.pourId++;
     this.hoverRegion = 0;
     if (this.o.view.hover) {
       this.o.view.hover = null;

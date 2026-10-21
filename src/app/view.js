@@ -52,7 +52,11 @@ export class CanvasView {
     this.showIgnored = true;
     /** @type {HTMLCanvasElement|null} the user's paint (wood / hole), image-sized */
     this.editLayer = null;
-    /** @type {{canvas: HTMLCanvasElement, x: number, y: number}|null} Bucket hover tint (image coords) */
+    /**
+     * Bucket hover preview (image coords). `tick` advances an animated pour and says
+     * whether it's still flowing; `ripple` is where the water was poured.
+     * @type {{canvas: HTMLCanvasElement, x: number, y: number, tick?: (now: number) => boolean, ripple?: {x: number, y: number, t0: number}}|null}
+     */
     this.hover = null;
     /** @type {null | {kind:'brush', x:number, y:number, r:number, color:string} | {kind:'line', ax:number, ay:number, bx:number, by:number, r:number, color:string}} */
     this.toolOverlay = null;
@@ -367,13 +371,40 @@ export class CanvasView {
     if (this.editLayer) ctx.drawImage(this.editLayer, r.x, r.y, r.w, r.h, ox + r.x * s, oy + r.y * s, r.w * s, r.h * s);
     if (this.hover) {
       const hv = this.hover;
+      const now = performance.now();
+      if (hv.tick && hv.tick(now)) this.requestRender();
       ctx.drawImage(hv.canvas, ox + hv.x * s, oy + hv.y * s, hv.canvas.width * s, hv.canvas.height * s);
+      if (hv.ripple) this.drawRipple(hv.ripple, now);
     }
 
     if (v.scale >= GRID_FROM) this.drawGrid(r, s, ox, oy);
     this.drawPins();
     this.drawGhosts();
     this.drawToolOverlay();
+  }
+
+  /** Rings spreading from where the water was poured. @param {{x:number, y:number, t0:number}} rp @param {number} now */
+  drawRipple(rp, now) {
+    const RING_MS = 900;
+    const { ctx, dpr, v } = this;
+    const cx = (rp.x * v.scale + v.tx) * dpr;
+    const cy = (rp.y * v.scale + v.ty) * dpr;
+    let alive = false;
+    ctx.save();
+    for (let i = 0; i < 3; i++) {
+      const u = (now - rp.t0 - i * 220) / RING_MS;
+      if (u < 0) { alive = true; continue; }
+      if (u >= 1) continue;
+      alive = true;
+      const e = 1 - (1 - u) * (1 - u) * (1 - u);
+      ctx.beginPath();
+      ctx.arc(cx, cy, (4 + 30 * e) * dpr, 0, Math.PI * 2);
+      ctx.lineWidth = (2.2 - 1.4 * u) * dpr;
+      ctx.strokeStyle = `rgba(150, 205, 255, ${0.9 * (1 - u)})`;
+      ctx.stroke();
+    }
+    ctx.restore();
+    if (alive) this.requestRender();
   }
 
   drawToolOverlay() {

@@ -682,6 +682,21 @@ showIgnored.addEventListener('change', () => {
   saveSettings(settings);
 });
 
+const previewButtons = /** @type {NodeListOf<HTMLButtonElement>} */ (document.querySelectorAll('[data-preview]'));
+/** @param {'tint'|'water'} style */
+function applyPreview(style) {
+  settings.bucketPreview = style;
+  tools.setPreview(style);
+  for (const b of previewButtons) b.setAttribute('aria-checked', String(b.dataset.preview === style));
+}
+for (const b of previewButtons) {
+  b.addEventListener('click', () => {
+    applyPreview(/** @type {'tint'|'water'} */ (b.dataset.preview));
+    saveSettings(settings);
+  });
+}
+applyPreview(settings.bucketPreview);
+
 bindTooltips($('tooltip'));
 bindPanels(document);
 
