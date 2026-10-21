@@ -1,10 +1,17 @@
 // @ts-check
-// Canvas navigation input: trackpad, mouse, Space-drag, Zoom tool, keyboard zoom.
+// Canvas input: trackpad, mouse, Space-drag, Zoom tool, keyboard zoom, and routing to the fixing tools.
 
-import { stepScale, zoomAt } from './viewport.js';
+import { stepScale, zoomAt, screenToImage } from './viewport.js';
+import { BRUSH_TOOLS } from './tools.js';
 
 /** @typedef {import('./view.js').CanvasView} CanvasView */
-/** @typedef {'hand'|'zoom'} ToolId */
+/** @typedef {import('./tools.js').ToolId} ToolId */
+/** @typedef {{x:number, y:number}} Pt */
+
+/** Single-key tool shortcuts (SPEC §6.5). */
+const TOOL_KEYS = /** @type {Record<string, ToolId>} */ ({
+  h: 'hand', z: 'zoom', b: 'bucket', w: 'wood', e: 'hole', r: 'revert', c: 'connector', x: 'separator',
+});
 
 const PINCH_K = 0.01; // ctrl+wheel (pinch) sensitivity
 const WHEEL_K = 0.0018; // mouse-wheel zoom sensitivity
@@ -15,8 +22,16 @@ export class NavigationInput {
   /**
    * @param {HTMLElement} stage
    * @param {CanvasView} view
-   * @param {{onToolChange: (t: ToolId) => void, onClick?: (x: number, y: number) => boolean}} hooks
-   *   onClick: a click (no drag) on the canvas; return true if it was handled (e.g. a pin)
+   * @param {{
+   *   onToolChange: (t: ToolId) => void,
+   *   onClick?: (x: number, y: number) => boolean,
+   *   onToolDown?: (e: PointerEvent, p: Pt) => boolean,
+   *   onToolMove?: (e: PointerEvent, p: Pt) => void,
+   *   onToolUp?: (e: PointerEvent, p: Pt) => void,
+   *   onHover?: (p: Pt|null) => void,
+   * }} hooks
+   *   onClick: a click (no drag) with Hand/Zoom; return true if it was handled (e.g. a marker).
+   *   onTool*: presses with an editing tool, in image px. onHover: pointer over the canvas (null = left it).
    */
   constructor(stage, view, hooks) {
     this.stage = stage;
@@ -26,7 +41,7 @@ export class NavigationInput {
     this.tool = 'hand';
     this.space = false;
     this.alt = false;
-    /** @type {null | {kind:'pan'|'zoom', id:number, x:number, y:number, sx:number, sy:number, scale0:number, moved:boolean, alt:boolean}} */
+    /** @type {null | {kind:'pan'|'zoom'|'tool', id:number, x:number, y:number, sx:number, sy:number, scale0:number, moved:boolean, alt:boolean}} */
     this.drag = null;
     this.lastWheel = 0;
     this.lastWasMouse = false;
@@ -43,6 +58,11 @@ export class NavigationInput {
     this.updateCursor();
   }
 
+  /** Screen (CSS px in the stage) → image px. @param {Pt} p */
+  toImage(p) {
+    return screenToImage(this.view.viewport, p.x, p.y);
+  }
+
   /** @param {MouseEvent} e */
   local(e) {
     const r = this.stage.getBoundingClientRect();
@@ -57,6 +77,8 @@ export class NavigationInput {
     else if (this.drag?.kind === 'zoom' && this.drag.moved) c = 'ew-resize';
     else if (this.space || this.tool === 'hand') c = 'grab';
     else if (this.tool === 'zoom') c = this.alt ? 'zoom-out' : 'zoom-in';
+    else if (this.tool === 'bucket') c = 'crosshair';
+    else if (BRUSH_TOOLS.includes(this.tool)) c = 'none'; // the brush circle is drawn on the canvas
     this.stage.dataset.cursor = c;
   }
 
@@ -89,6 +111,9 @@ export class NavigationInput {
     stage.addEventListener('pointermove', (e) => this.onPointerMove(e));
     stage.addEventListener('pointerup', (e) => this.onPointerUp(e));
     stage.addEventListener('pointercancel', (e) => this.onPointerUp(e));
+    stage.addEventListener('pointerleave', () => {
+      if (!this.drag) this.hooks.onHover?.(null);
+    });
     stage.addEventListener('auxclick', (e) => { if (e.button === 1) e.preventDefault(); });
 
     window.addEventListener('keydown', (e) => this.onKeyDown(e));
@@ -162,7 +187,13 @@ export class NavigationInput {
     const p = this.local(e);
     const isPan = e.button === 1 || (e.button === 0 && (this.space || this.tool === 'hand'));
     const isZoom = e.button === 0 && !isPan && this.tool === 'zoom';
-    if (!isPan && !isZoom) return;
+    if (!isPan && !isZoom) {
+      if (e.button !== 0 || !this.hooks.onToolDown?.(e, this.toImage(p))) return;
+      e.preventDefault();
+      this.stage.setPointerCapture(e.pointerId);
+      this.drag = { kind: 'tool', id: e.pointerId, x: p.x, y: p.y, sx: p.x, sy: p.y, scale0: 1, moved: false, alt: e.altKey };
+      return;
+    }
     e.preventDefault();
     this.stage.setPointerCapture(e.pointerId);
     this.drag = {
@@ -183,20 +214,25 @@ export class NavigationInput {
   onPointerMove(e) {
     const d = this.drag;
     if (!d) {
-      // Hovering: show a pointer over pins.
       if (e.target === this.view.canvas) {
         const p = this.local(e);
-        const over = !!this.view.pinAt(p.x, p.y);
+        // Hand/Zoom: a pointer over markers. Editing tools: live brush / Bucket preview.
+        const navTool = this.tool === 'hand' || this.tool === 'zoom';
+        const over = navTool && !!this.view.pinAt(p.x, p.y);
         if (over !== this.overPin) {
           this.overPin = over;
           this.updateCursor();
         }
+        if (!navTool && !this.space) this.hooks.onHover?.(this.toImage(p));
       }
       return;
     }
     if (e.pointerId !== d.id) return;
     const p = this.local(e);
-    if (d.kind === 'pan') {
+    if (d.kind === 'tool') {
+      d.moved = true;
+      this.hooks.onToolMove?.(e, this.toImage(p));
+    } else if (d.kind === 'pan') {
       if (!d.moved && Math.hypot(p.x - d.sx, p.y - d.sy) > 3) {
         d.moved = true;
         this.updateCursor();
@@ -221,6 +257,11 @@ export class NavigationInput {
     const d = this.drag;
     if (!d || e.pointerId !== d.id) return;
     this.drag = null;
+    if (d.kind === 'tool') {
+      this.hooks.onToolUp?.(e, this.toImage(this.local(e)));
+      this.updateCursor();
+      return;
+    }
     if (!d.moved && e.type === 'pointerup' && this.hooks.onClick?.(d.sx, d.sy)) {
       this.updateCursor();
       return;
@@ -291,9 +332,8 @@ export class NavigationInput {
     }
 
     if (!mod && !e.altKey && !e.repeat) {
-      const k = e.key.toLowerCase();
-      if (k === 'h') this.setTool('hand');
-      else if (k === 'z') this.setTool('zoom');
+      const t = TOOL_KEYS[e.key.toLowerCase()];
+      if (t) this.setTool(t);
     }
   }
 

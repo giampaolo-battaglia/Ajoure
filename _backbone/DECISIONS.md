@@ -46,3 +46,17 @@ with a new one that says what changed and why.
 **Because:** Julie measurements: a neighbour-count rule failed on the background around the lettering; strict alternation failed on overlapping petals; plain ICM got stuck with flowers inverted. This model scores 97.7% as-is / 99.9% with leaks closed.
 **Rejected:** degree-based guess (79–87%), even/odd parity from the outside (petals wrong), averaged shares (92%).
 **Revisit if:** a second reference image disagrees; weights live in WEIGHTS in src/engine/classify.js and tests/julie.test.mjs guards regressions.
+
+## 007 — Edits are a separate layer; re-checks lean on the previous guess
+**Date:** 2026-10-21
+**Chose:** One byte per pixel of edits (none / wood paint / hole cut) over the prepared image, plus Bucket clicks stored as seed points (x, y, class; latest wins). Hole paint is a cut: it never merges the regions on either side. Every edit triggers a full re-analysis in the worker, which leans on the previous scan's own guess (prior weight 1.5); Bucket clicks are applied after the guess and never feed the prior.
+**Because:** Keeps the original untouched and undo trivial (rect patches). Without the prior, fixing one Julie leak re-shuffled borderline regions and produced 3 new false leaks; with it, fixing leaks one by one ends at 0 leaks and 99.9% agreement. Seeding the prior with clicks made undo of a Bucket click not restore the old guess.
+**Rejected:** Majority-overlap carry-over of region classes (SPEC §7.1) — seed points are simpler and survive splits; incremental dirty-rect analysis — later, once behaviour is right.
+**Revisit if:** re-checks get too slow on big images (go incremental) or the prior makes the app "stick" to a wrong guess (lower PRIOR_WEIGHT in src/engine/analyze.js).
+
+## 008 — One quick fix per issue type now, the swipe later
+**Date:** 2026-10-21
+**Chose:** The fix tray offers a single computed fix: Close gap (draw the gap segment the engine already found, in the drawing's stroke width) for leaks, Remove (cut out the loose piece) for islands and specks.
+**Because:** The engine already knows the exact gap segment, so the best fix costs nothing; it turns Julie into three Enters. Several candidates to swipe through stay in v2 (SPEC §11).
+**Rejected:** Shipping the tray with tools only (slower, and the data was already there).
+**Revisit if:** Giampi prefers bridging islands by default (then Connector becomes the island quick fix).

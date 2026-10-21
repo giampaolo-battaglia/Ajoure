@@ -54,25 +54,33 @@ export const DETECTION = Object.freeze({
  */
 
 /**
- * @param {Uint8ClampedArray|Uint8Array} rgba @param {number} w @param {number} h
- * @param {{widthMm?: number, threshold?: number, profile?: typeof BASSWOOD_3MM,
- *          weights?: Partial<typeof import('./classify.js').WEIGHTS>,
- *          detection?: Partial<typeof DETECTION>}} [opts]
+ * @typedef {{widthMm?: number, threshold?: number, profile?: typeof BASSWOOD_3MM,
+ *            weights?: Partial<typeof import('./classify.js').WEIGHTS>,
+ *            detection?: Partial<typeof DETECTION>,
+ *            prior?: Uint8Array|null}} ScanOptions
+ *   prior: the previous scan's autoMap (its guess before Bucket clicks); re-scans lean toward it
+ *   so only what you changed moves.
+ * @typedef {{x:number, y:number, cls:number}} Seed  a Bucket click: region under (x, y) is forced to cls (WOOD or HOLE)
+ * @typedef {ReturnType<typeof prepare>} Base
  */
-export function analyze(rgba, w, h, opts = {}) {
+
+/** How strongly a re-scan sticks to the previous scan's wood/hole answer (same units as WEIGHTS). */
+const PRIOR_WEIGHT = 1.5;
+
+/** Edit values in the edits layer (one byte per pixel). */
+export const EDIT_NONE = 0, EDIT_WOOD = 1, EDIT_HOLE = 2;
+
+/**
+ * One-off image preparation: threshold, clean-up, line art vs filled, scale. Done once per image;
+ * every later re-check after an edit starts from this.
+ * @param {Uint8ClampedArray|Uint8Array} rgba @param {number} w @param {number} h @param {ScanOptions} [opts]
+ */
+export function prepare(rgba, w, h, opts = {}) {
   const t0 = now();
-  const timings = /** @type {Record<string, number>} */ ({});
-  let tLast = t0;
-  const mark = (/** @type {string} */ k) => {
-    const t = now();
-    timings[k] = Math.round(t - tLast);
-    tLast = t;
-  };
-  const profile = opts.profile ?? BASSWOOD_3MM;
   const estimated = opts.widthMm == null;
   const widthMm = opts.widthMm ?? 50;
 
-  // 1. Ink: auto threshold, flip white-on-black, drop dust.
+  // Ink: auto threshold, flip white-on-black, drop dust.
   const gray = toGray(rgba, w, h);
   const threshold = opts.threshold ?? otsu(gray);
   const ink = binarize(gray, threshold);
@@ -86,20 +94,63 @@ export function analyze(rgba, w, h, opts = {}) {
   // Pinholes: specks of paper a few pixels big, trapped inside lines, become line.
   const pin = labelComponents(ink, w, h, 0, false);
   for (let p = 0; p < ink.length; p++) if (!ink[p] && !pin.border[pin.labels[p]] && pin.area[pin.labels[p]] < 12) ink[p] = 1;
-  const mode = fraction(ink) < 0.3 ? 'lineart' : 'filled';
-  mark('ink');
+  const mode = /** @type {'lineart'|'filled'} */ (fraction(ink) < 0.3 ? 'lineart' : 'filled');
 
-  // 2. Regions of paper between lines; anything touching the image edge is waste.
+  // Scale: the piece (everything not touching the image edge) is assumed widthMm wide.
   const regions = labelComponents(ink, w, h, 0, false);
   const waste = new Uint8Array(regions.count + 1);
   for (let r = 1; r <= regions.count; r++) waste[r] = regions.border[r];
   const piece = pieceBox(regions.labels, waste, w, h);
   const pxPerMm = piece.w / widthMm;
+  return { w, h, ink, threshold, inverted, mode, piece, pxPerMm, widthMm, estimated, prepMs: Math.round(now() - t0) };
+}
+
+/**
+ * Full scan of a prepared image with the user's edits applied.
+ * @param {Base} base
+ * @param {Uint8Array|null} edits  per pixel: EDIT_NONE / EDIT_WOOD (material) / EDIT_HOLE (cut)
+ * @param {Seed[]} seeds  Bucket clicks, oldest first
+ * @param {ScanOptions} [opts]
+ */
+export function analyzeEdited(base, edits, seeds = [], opts = {}) {
+  const t0 = now();
+  const { w, h, mode, pxPerMm, piece, widthMm, estimated, threshold, inverted } = base;
+  const n = w * h;
+  const timings = /** @type {Record<string, number>} */ ({});
+  let tLast = t0;
+  const mark = (/** @type {string} */ k) => {
+    const t = now();
+    timings[k] = Math.round(t - tLast);
+    tLast = t;
+  };
+  const profile = opts.profile ?? BASSWOOD_3MM;
+
+  // 1. Apply edits: wood paint becomes line, hole paint becomes a cut (never wood, never merges regions).
+  const ink = Uint8Array.from(base.ink);
+  const cut = new Uint8Array(n);
+  if (edits) {
+    for (let p = 0; p < n; p++) {
+      const e = edits[p];
+      if (e === EDIT_WOOD) ink[p] = 1;
+      else if (e === EDIT_HOLE) {
+        ink[p] = 0;
+        cut[p] = 1;
+      }
+    }
+  }
+  /** Lines and cuts both separate paper regions. */
+  const solid = new Uint8Array(n);
+  for (let p = 0; p < n; p++) solid[p] = ink[p] | cut[p];
+
+  // 2. Regions of paper; anything touching the image edge is waste.
+  const regions = labelComponents(solid, w, h, 0, false);
+  const waste = new Uint8Array(regions.count + 1);
+  for (let r = 1; r <= regions.count; r++) waste[r] = regions.border[r];
   mark('regions');
 
   // 3. Typical stroke width from the line skeleton.
-  const paper = new Uint8Array(ink.length);
-  for (let i = 0; i < ink.length; i++) paper[i] = ink[i] ^ 1;
+  const paper = new Uint8Array(n);
+  for (let i = 0; i < n; i++) paper[i] = ink[i] ^ 1;
   const toPaper = distanceTo(paper, w, h);
   const skel = thin(ink, w, h);
   const strokeW = estimateStroke(skel, toPaper);
@@ -109,6 +160,8 @@ export function analyze(rgba, w, h, opts = {}) {
   const debug = {};
   /** What the piece looks like with every detected leak closed (same pixel classes as classMap). */
   let fixedClassMap = /** @type {Uint8Array|null} */ (null);
+  /** The guess before Bucket clicks, per pixel (worker-only: the next re-check's prior). */
+  let autoMap = /** @type {Uint8Array|null} */ (null);
   let regionClass = new Uint8Array(regions.count + 1);
   let confidence = new Float32Array(regions.count + 1).fill(1);
   /** @type {Issue[]} */
@@ -123,9 +176,9 @@ export function analyze(rgba, w, h, opts = {}) {
     const searchR = gapMax + strokeW / 2 + 1;
     gaps = findGaps(ink, w, h, ends, { searchR, geoLimit: Math.round(2 * searchR + 2 * strokeW), strokeW });
     // Necks: pinches in the paper narrower than the leak width (curves that almost touch).
-    const toInkRaw = distanceTo(ink, w, h);
+    const toSolidRaw = distanceTo(solid, w, h);
     const det = { ...DETECTION, ...opts.detection };
-    const necks = findNecks(ink, toInkRaw, w, h, {
+    const necks = findNecks(solid, toSolidRaw, w, h, {
       coreR: (det.neckGapMm * pxPerMm) / 2 + 0.5,
       minPart: Math.max(4 * strokeW * strokeW, det.neckMinPartMm2 * pxPerMm * pxPerMm),
     });
@@ -134,7 +187,7 @@ export function analyze(rgba, w, h, opts = {}) {
       const my = (nk.ay + nk.by) / 2;
       if (!gaps.some((g) => Math.hypot((g.ax + g.bx) / 2 - mx, (g.ay + g.by) / 2 - my) < strokeW * 1.5)) gaps.push(nk);
     }
-    const closedInk = Uint8Array.from(ink);
+    const closedInk = Uint8Array.from(solid);
     for (const g of gaps) drawLine(closedInk, w, h, g.ax, g.ay, g.bx, g.by, 1);
     mark('gaps');
 
@@ -144,11 +197,28 @@ export function analyze(rgba, w, h, opts = {}) {
     for (let r = 1; r <= closed.count; r++) cWaste[r] = closed.border[r];
     const toInk = distanceTo(closedInk, w, h);
     const thickness = new Float32Array(closed.count + 1);
-    for (let p = 0; p < closedInk.length; p++) {
+    for (let p = 0; p < n; p++) {
       const r = closed.labels[p];
       if (r && 2 * toInk[p] > thickness[r]) thickness[r] = 2 * toInk[p];
     }
     const graph = regionGraph(closedInk, closed.labels, closed.count, w, h, Math.max(6, strokeW));
+    // Stability: lean toward what the previous scan decided for these pixels.
+    let priorBias = null;
+    if (opts.prior && opts.prior.length === n) {
+      const pv = new Float64Array((closed.count + 1) * 2);
+      for (let p = 0; p < n; p++) {
+        const q = closed.labels[p];
+        if (!q) continue;
+        const c = opts.prior[p];
+        if (c === PX_WOOD) pv[q * 2]++;
+        else if (c === PX_HOLE) pv[q * 2 + 1]++;
+      }
+      priorBias = new Float64Array(closed.count + 1);
+      for (let q = 1; q <= closed.count; q++) {
+        const t = pv[q * 2] + pv[q * 2 + 1];
+        if (t) priorBias[q] = PRIOR_WEIGHT * ((pv[q * 2] - pv[q * 2 + 1]) / t);
+      }
+    }
     const guess = classifyRegions({
       count: closed.count,
       area: closed.area,
@@ -157,7 +227,21 @@ export function analyze(rgba, w, h, opts = {}) {
       nb: graph.nb,
       contact: graph.contact,
       strokeW,
-    }, opts.weights);
+    }, opts.weights, priorBias);
+    // The engine's own answer, before your Bucket clicks — this (not your clicks) is what the
+    // next re-check leans on, so undoing a click really brings the old guess back.
+    const autoCls = Uint8Array.from(guess.cls);
+    autoMap = new Uint8Array(n);
+    for (let p = 0; p < n; p++) {
+      if (closedInk[p]) continue; // lines: not a vote either way
+      const c = autoCls[closed.labels[p]];
+      autoMap[p] = c === WOOD ? PX_WOOD : c === HOLE ? PX_HOLE : PX_WASTE;
+    }
+    // Bucket clicks win over the guess (latest click wins if several land in one region).
+    for (const s of seeds) {
+      const q = closed.labels[s.y * w + s.x];
+      if (q && !cWaste[q]) guess.cls[q] = s.cls;
+    }
     mark('classify');
     debug.closed = closed;
     debug.guess = guess;
@@ -167,7 +251,7 @@ export function analyze(rgba, w, h, opts = {}) {
 
     // 6. A gap is a leak when closing it separates wood from hole (or from the outside).
     for (const g of gaps) {
-      const c = gapCenter(ink, w, g);
+      const c = gapCenter(solid, w, g);
       const nx = -(g.by - g.ay);
       const ny = g.bx - g.ax;
       const nl = Math.hypot(nx, ny) || 1;
@@ -177,11 +261,13 @@ export function analyze(rgba, w, h, opts = {}) {
       const ca = guess.cls[a];
       const cb = guess.cls[b];
       if (ca === cb || (ca !== WOOD && cb !== WOOD)) continue;
+      (debug.leakSides ??= []).push({ c, a, b, ca, cb, areaA: closed.area[a], areaB: closed.area[b], confA: guess.confidence[a], confB: guess.confidence[b],
+        ra: regions.labels[sidePx(closedInk, w, h, c, nx / nl, ny / nl, strokeW + 4)], rb: regions.labels[sidePx(closedInk, w, h, c, -nx / nl, -ny / nl, strokeW + 4)] });
       const gapMm = g.gapPx / pxPerMm;
       const into = ca === WASTE || cb === WASTE ? 'the outside' : 'a hole';
       const s = Math.round(strokeW * 4);
       issues.push({
-        id: `leak-${issues.length + 1}`,
+        id: issueId('leak', c.x, c.y),
         type: 'leak',
         severity: 'critical',
         family: 'structure',
@@ -200,18 +286,19 @@ export function analyze(rgba, w, h, opts = {}) {
     // Preview with the leaks closed: only the closures that are real leaks are kept as lines.
     const fixedInk = Uint8Array.from(ink);
     for (const i of issues) if (i.fix) drawLine(fixedInk, w, h, i.fix.ax, i.fix.ay, i.fix.bx, i.fix.by, 1);
-    fixedClassMap = new Uint8Array(ink.length);
-    for (let p = 0; p < ink.length; p++) {
+    fixedClassMap = new Uint8Array(n);
+    for (let p = 0; p < n; p++) {
       if (fixedInk[p]) fixedClassMap[p] = PX_LINE;
+      else if (cut[p]) fixedClassMap[p] = PX_HOLE;
       else {
         const c = guess.cls[closed.labels[p]];
         fixedClassMap[p] = c === WOOD ? PX_WOOD : c === HOLE ? PX_HOLE : PX_WASTE;
       }
     }
 
-    // 7. Each original region takes the majority class of the closed regions it covers.
+    // 7. Each region takes the majority class of the closed regions it covers.
     const votes = new Float64Array((regions.count + 1) * 3);
-    for (let p = 0; p < ink.length; p++) {
+    for (let p = 0; p < n; p++) {
       const r = regions.labels[p];
       const q = closed.labels[p];
       if (r && q) votes[r * 3 + guess.cls[q]]++;
@@ -225,10 +312,10 @@ export function analyze(rgba, w, h, opts = {}) {
       const vh = votes[r * 3 + HOLE] + votes[r * 3 + WASTE];
       regionClass[r] = vw >= vh ? WOOD : HOLE;
     }
-    // Confidence per original region: the closed region covering most of it.
+    // Confidence per region: the closed region covering most of it.
     confidence = new Float32Array(regions.count + 1).fill(1);
     const seen = new Uint8Array(regions.count + 1);
-    for (let p = 0; p < ink.length; p++) {
+    for (let p = 0; p < n; p++) {
       const r = regions.labels[p];
       const q = closed.labels[p];
       if (r && q && !seen[r]) {
@@ -242,13 +329,24 @@ export function analyze(rgba, w, h, opts = {}) {
     mark('classify');
   }
 
-  // 8. Per-pixel map for display, and the wood mask (lines belong to the wood).
-  const classMap = new Uint8Array(ink.length);
-  const wood = new Uint8Array(ink.length);
-  for (let p = 0; p < ink.length; p++) {
+  // Bucket clicks also decide the (unclosed) region they landed in — that's what the bucket fills.
+  for (const s of seeds) {
+    const r = regions.labels[s.y * w + s.x];
+    if (r && !waste[r]) {
+      regionClass[r] = s.cls;
+      confidence[r] = 1;
+    }
+  }
+
+  // 8. Per-pixel map for display, and the wood mask (lines belong to the wood, cuts never do).
+  const classMap = new Uint8Array(n);
+  const wood = new Uint8Array(n);
+  for (let p = 0; p < n; p++) {
     if (ink[p]) {
       classMap[p] = PX_LINE;
       wood[p] = 1;
+    } else if (cut[p]) {
+      classMap[p] = PX_HOLE;
     } else {
       const c = regionClass[regions.labels[p]];
       classMap[p] = c === WOOD ? PX_WOOD : c === HOLE ? PX_HOLE : PX_WASTE;
@@ -269,7 +367,7 @@ export function analyze(rgba, w, h, opts = {}) {
     const ay = parts.sumY[c] / parts.area[c];
     const anchor = nearestIn(parts.labels, c, w, h, ax, ay, parts);
     issues.push({
-      id: `${speck ? 'speck' : 'island'}-${c}`,
+      id: issueId(speck ? 'speck_island' : 'island', ax, ay),
       type: speck ? 'speck_island' : 'island',
       severity: speck ? 'info' : 'critical',
       family: 'structure',
@@ -288,6 +386,14 @@ export function analyze(rgba, w, h, opts = {}) {
 
   const sev = { critical: 0, warning: 1, info: 2 };
   issues.sort((a, b) => sev[a.severity] - sev[b.severity] || a.anchor[1] - b.anchor[1]);
+  // Ids must be unique even if two issues land in the same 8-px cell.
+  const used = new Set();
+  for (const i of issues) {
+    let id = i.id;
+    for (let k = 2; used.has(id); k++) id = `${i.id}~${k}`;
+    used.add(id);
+    i.id = id;
+  }
 
   const summary = {
     leaks: issues.filter((i) => i.type === 'leak').length,
@@ -313,12 +419,30 @@ export function analyze(rgba, w, h, opts = {}) {
     confidence,
     classMap,
     fixedClassMap,
+    autoMap,
     issues,
     summary,
     timings,
     debug,
     totalMs: Math.round(now() - t0),
   };
+}
+
+/**
+ * Prepare + scan in one go (no edits).
+ * @param {Uint8ClampedArray|Uint8Array} rgba @param {number} w @param {number} h @param {ScanOptions} [opts]
+ */
+export function analyze(rgba, w, h, opts = {}) {
+  const base = prepare(rgba, w, h, opts);
+  const res = analyzeEdited(base, null, [], opts);
+  res.timings = { prepare: base.prepMs, ...res.timings };
+  res.totalMs += base.prepMs;
+  return res;
+}
+
+/** Stable-ish id: type + position on an 8-px grid, so an issue keeps its id across re-scans. */
+function issueId(/** @type {string} */ type, /** @type {number} */ x, /** @type {number} */ y) {
+  return `${type}@${Math.round(x / 8)},${Math.round(y / 8)}`;
 }
 
 // ---- helpers ------------------------------------------------------------------
@@ -389,6 +513,18 @@ function sideLabel(ink, labels, w, h, x, y, dx, dy, maxStep) {
     if (px < 0 || py < 0 || px >= w || py >= h) return 0;
     const p = py * w + px;
     if (!ink[p] && labels[p]) return labels[p];
+  }
+  return 0;
+}
+
+/** Index of the first non-ink pixel stepping from c along (dx, dy). */
+function sidePx(/** @type {Uint8Array} */ ink, /** @type {number} */ w, /** @type {number} */ h, /** @type {{x:number,y:number}} */ c, /** @type {number} */ dx, /** @type {number} */ dy, /** @type {number} */ maxStep) {
+  for (let k = 1; k <= maxStep; k++) {
+    const px = Math.round(c.x + dx * k);
+    const py = Math.round(c.y + dy * k);
+    if (px < 0 || py < 0 || px >= w || py >= h) return 0;
+    const p = py * w + px;
+    if (!ink[p]) return p;
   }
   return 0;
 }

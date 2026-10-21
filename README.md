@@ -39,6 +39,24 @@ Drop an image and Ajouré scans it at once: the top bar sums up what it found, r
 and **Wood/Hole** in the top bar shows what stays (white) and what gets cut (grey).
 Prefer round pins? Open **Settings** (top-right button, or ⌘,) and pick **Pin**.
 
+## Fixing
+
+Click an issue (or press **N**) and the fix tray opens at the bottom: **Enter** applies the quick fix
+(*Close gap* for a leak, *Remove* for a loose piece), **I** ignores it, **N / P** move between issues.
+Or fix it by hand:
+
+| Tool | Key | What it does |
+|---|---|---|
+| Bucket | B | Click an area to swap wood ↔ hole (⇧ wood, ⌥ hole); hovering shows how far it spills |
+| Wood brush | W | Paint material — close a gap, thicken a stroke |
+| Hole brush | E | Paint a cut — separate strokes, open a hole |
+| Revert brush | R | Wipe your edits back to the original |
+| Connector | C | Click A then B: a wood bridge |
+| Separator | X | Drag across a junction to cut it |
+
+`[` / `]` resize the brush, ⇧-click paints a straight line, ⌘Z / ⇧⌘Z undo and redo.
+Your original image is never changed: edits live on their own layer.
+
 ## Navigation cheat sheet
 
 | Action | Trackpad | Mouse | Keyboard |

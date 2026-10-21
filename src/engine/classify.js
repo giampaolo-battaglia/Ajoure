@@ -40,14 +40,15 @@ export const WEIGHTS = Object.freeze({
  *   strokeW: number,
  * }} g
  * @param {Partial<typeof WEIGHTS>} [weights]
+ * @param {Float64Array|null} [prior]  per region: extra cost of HOLE (positive = keep it wood), from the previous scan
  * @returns {{cls: Uint8Array, confidence: Float32Array, energy: number}}
  */
-export function classifyRegions(g, weights = {}) {
+export function classifyRegions(g, weights = {}, prior = null) {
   const W = { ...WEIGHTS, ...weights };
   const K = g.count + 1;
   const unary = new Float64Array(K); // extra cost of HOLE vs WOOD, before neighbours
   for (let r = 1; r < K; r++) {
-    if (!g.waste[r]) unary[r] = unaryHole(g, W, r);
+    if (!g.waste[r]) unary[r] = unaryHole(g, W, r) + (prior ? prior[r] : 0);
   }
   const model = { g, W, unary };
 

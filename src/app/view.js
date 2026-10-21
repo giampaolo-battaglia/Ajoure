@@ -49,6 +49,17 @@ export class CanvasView {
     this.focusId = null;
     /** @type {MarkerStyle} how issues are drawn on the canvas */
     this.markerStyle = 'box';
+    this.showIgnored = true;
+    /** @type {HTMLCanvasElement|null} the user's paint (wood / hole), image-sized */
+    this.editLayer = null;
+    /** @type {{canvas: HTMLCanvasElement, x: number, y: number}|null} Bucket hover tint (image coords) */
+    this.hover = null;
+    /** @type {null | {kind:'brush', x:number, y:number, r:number, color:string} | {kind:'line', ax:number, ay:number, bx:number, by:number, r:number, color:string}} */
+    this.toolOverlay = null;
+    /** @type {{issue: Issue, t0: number}[]} resolved markers fading out */
+    this.ghosts = [];
+    /** @type {{x:number, y:number, issues: Issue[]}[]} pin clusters on screen (CSS px), for hit-testing */
+    this.clusters = [];
     /** @type {CanvasPattern|null} */
     this.checker = null;
     this.checkerDpr = 0;
@@ -151,19 +162,32 @@ export class CanvasView {
     return { x: cx - side / 2, y: cy - side / 2, side };
   }
 
+  /** Issues that currently have a visible marker. */
+  visibleIssues() {
+    return this.issues.filter((i) => i.status === 'open' || (i.status === 'ignored' && this.showIgnored));
+  }
+
   /**
    * The issue marker under a screen point, if any (pin or box, whichever is showing).
    * @param {number} x @param {number} y
    * @returns {Issue|null}
    */
   pinAt(x, y) {
-    const v = this.v;
-    let best = null;
+    const hit = this.hitMarker(x, y);
+    return hit ? hit[0] : null;
+  }
+
+  /**
+   * All issues under a screen point: one for a box or single pin, several for a pin cluster.
+   * @param {number} x @param {number} y
+   * @returns {Issue[]|null}
+   */
+  hitMarker(x, y) {
     if (this.markerStyle === 'box') {
       // Inside a box (with a little slack); the smallest box wins when they overlap.
+      let best = null;
       let bestSide = Infinity;
-      for (const i of this.issues) {
-        if (i.status !== 'open') continue;
+      for (const i of this.visibleIssues()) {
         const b = this.issueBox(i);
         const m = 4;
         if (x >= b.x - m && x <= b.x + b.side + m && y >= b.y - m && y <= b.y + b.side + m && b.side < bestSide) {
@@ -171,20 +195,31 @@ export class CanvasView {
           best = i;
         }
       }
-      return best;
+      return best ? [best] : null;
     }
+    let best = null;
     let bestD = (PIN_R + 4) ** 2;
-    for (const i of this.issues) {
-      if (i.status !== 'open') continue;
-      const px = i.anchor[0] * v.scale + v.tx;
-      const py = i.anchor[1] * v.scale + v.ty;
-      const d = (px - x) ** 2 + (py - y) ** 2;
+    for (const c of this.clusters) {
+      const d = (c.x - x) ** 2 + (c.y - y) ** 2;
       if (d < bestD) {
         bestD = d;
-        best = i;
+        best = c.issues;
       }
     }
     return best;
+  }
+
+  /** Mark issues as just resolved: they flash green and fade. @param {Issue[]} list */
+  addGhosts(list) {
+    const t0 = performance.now();
+    for (const issue of list) this.ghosts.push({ issue, t0 });
+    this.requestRender();
+  }
+
+  /** @param {HTMLCanvasElement|null} layer */
+  setEditLayer(layer) {
+    this.editLayer = layer;
+    this.requestRender();
   }
 
   /** Glide so an issue sits in the middle, comfortably zoomed. @param {Issue} issue */
@@ -328,30 +363,142 @@ export class CanvasView {
     ctx.imageSmoothingQuality = 'high';
     const src = showWood ? /** @type {ImageBitmap} */ (this.woodHole) : image;
     ctx.drawImage(src, r.x, r.y, r.w, r.h, ox + r.x * s, oy + r.y * s, r.w * s, r.h * s);
+    // The user's paint shows at once, before the re-check comes back.
+    if (this.editLayer) ctx.drawImage(this.editLayer, r.x, r.y, r.w, r.h, ox + r.x * s, oy + r.y * s, r.w * s, r.h * s);
+    if (this.hover) {
+      const hv = this.hover;
+      ctx.drawImage(hv.canvas, ox + hv.x * s, oy + hv.y * s, hv.canvas.width * s, hv.canvas.height * s);
+    }
 
     if (v.scale >= GRID_FROM) this.drawGrid(r, s, ox, oy);
     this.drawPins();
+    this.drawGhosts();
+    this.drawToolOverlay();
+  }
+
+  drawToolOverlay() {
+    const o = this.toolOverlay;
+    if (!o) return;
+    const { ctx, dpr, v } = this;
+    const sx = (/** @type {number} */ x) => (x * v.scale + v.tx) * dpr;
+    const sy = (/** @type {number} */ y) => (y * v.scale + v.ty) * dpr;
+    ctx.save();
+    if (o.kind === 'brush') {
+      const r = Math.max(1.5 * dpr, o.r * v.scale * dpr);
+      ctx.beginPath();
+      ctx.arc(sx(o.x), sy(o.y), r, 0, Math.PI * 2);
+      ctx.lineWidth = 3 * dpr;
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+      ctx.stroke();
+      ctx.lineWidth = 1.25 * dpr;
+      ctx.strokeStyle = o.color;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(sx(o.x), sy(o.y), 1.25 * dpr, 0, Math.PI * 2);
+      ctx.fillStyle = o.color;
+      ctx.fill();
+    } else {
+      ctx.lineCap = 'round';
+      ctx.globalAlpha = 0.75;
+      ctx.lineWidth = Math.max(2 * dpr, 2 * o.r * v.scale * dpr);
+      ctx.strokeStyle = o.color;
+      ctx.beginPath();
+      ctx.moveTo(sx(o.ax), sy(o.ay));
+      ctx.lineTo(sx(o.bx), sy(o.by));
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      for (const [x, y] of [[o.ax, o.ay], [o.bx, o.by]]) {
+        ctx.beginPath();
+        ctx.arc(sx(x), sy(y), 3.5 * dpr, 0, Math.PI * 2);
+        ctx.fillStyle = '#fff';
+        ctx.fill();
+        ctx.lineWidth = 1.5 * dpr;
+        ctx.strokeStyle = o.color;
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
+  /** Resolved issues: a green marker with a check, fading out over 700 ms. */
+  drawGhosts() {
+    if (!this.ghosts.length) return;
+    const now = performance.now();
+    this.ghosts = this.ghosts.filter((g) => now - g.t0 < 700);
+    const { ctx, dpr, v } = this;
+    for (const g of this.ghosts) {
+      const t = (now - g.t0) / 700;
+      const x = (g.issue.anchor[0] * v.scale + v.tx) * dpr;
+      const y = (g.issue.anchor[1] * v.scale + v.ty) * dpr;
+      const r = (PIN_R + 2 * t) * dpr;
+      ctx.save();
+      ctx.globalAlpha = 1 - t * t;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fillStyle = this.colors.ok;
+      ctx.fill();
+      ctx.lineWidth = 2 * dpr;
+      ctx.strokeStyle = '#fff';
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x - 4 * dpr, y + 0.2 * dpr);
+      ctx.lineTo(x - 1.2 * dpr, y + 3 * dpr);
+      ctx.lineTo(x + 4.2 * dpr, y - 3 * dpr);
+      ctx.lineWidth = 2 * dpr;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.stroke();
+      ctx.restore();
+    }
+    if (this.ghosts.length) this.requestRender();
   }
 
   drawPins() {
+    this.clusters = [];
     if (!this.issues.length) return;
     if (this.markerStyle === 'box') return this.drawBoxes();
     const { ctx, dpr, v } = this;
     const pad = 20;
-    for (const i of this.issues) {
-      if (i.status !== 'open') continue;
-      const x = (i.anchor[0] * v.scale + v.tx) * dpr;
-      const y = (i.anchor[1] * v.scale + v.ty) * dpr;
-      if (x < -pad * dpr || y < -pad * dpr || x > this.canvas.width + pad * dpr || y > this.canvas.height + pad * dpr) continue;
-      const focused = i.id === this.focusId;
+    // Group pins that would overlap on screen into one pin with a count.
+    /** @type {{x:number, y:number, issues: Issue[]}[]} */
+    const clusters = [];
+    for (const i of this.visibleIssues()) {
+      const x = i.anchor[0] * v.scale + v.tx;
+      const y = i.anchor[1] * v.scale + v.ty;
+      if (x < -pad || y < -pad || x > this.canvas.width / dpr + pad || y > this.canvas.height / dpr + pad) continue;
+      const c = clusters.find((k) => (k.x - x) ** 2 + (k.y - y) ** 2 < (PIN_R * 1.6) ** 2 && k.issues[0].status === i.status);
+      if (c) c.issues.push(i);
+      else clusters.push({ x, y, issues: [i] });
+    }
+    this.clusters = clusters;
+    for (const c of clusters) {
+      const i = c.issues[0];
+      const focused = c.issues.some((k) => k.id === this.focusId);
+      const x = c.x * dpr;
+      const y = c.y * dpr;
       const r = (focused ? PIN_R + 2 : PIN_R) * dpr;
-      const color = i.severity === 'critical' ? this.colors.critical : i.severity === 'warning' ? this.colors.warning : this.colors.info;
+      const ignored = i.status === 'ignored';
+      const worst = c.issues.find((k) => k.severity === 'critical') || i;
+      const color = ignored ? this.colors.ignored : sevColor(this.colors, worst.severity);
       ctx.save();
       if (focused) {
         ctx.beginPath();
         ctx.arc(x, y, r + 6 * dpr, 0, Math.PI * 2);
         ctx.fillStyle = color + '33';
         ctx.fill();
+      }
+      if (ignored) {
+        // Hollow grey ring: still there, but set aside.
+        ctx.beginPath();
+        ctx.arc(x, y, r - 1 * dpr, 0, Math.PI * 2);
+        ctx.lineWidth = 3.5 * dpr;
+        ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+        ctx.stroke();
+        ctx.lineWidth = 2 * dpr;
+        ctx.strokeStyle = color;
+        ctx.stroke();
+        ctx.restore();
+        continue;
       }
       ctx.shadowColor = 'rgba(0,0,0,0.35)';
       ctx.shadowBlur = 4 * dpr;
@@ -364,11 +511,15 @@ export class CanvasView {
       ctx.lineWidth = 2 * dpr;
       ctx.strokeStyle = '#ffffff';
       ctx.stroke();
-      // Glyph
       ctx.fillStyle = '#ffffff';
       ctx.strokeStyle = '#ffffff';
       const u = r / PIN_R;
-      if (i.type === 'leak') {
+      if (c.issues.length > 1) {
+        ctx.font = `600 ${Math.round(10 * u)}px -apple-system, BlinkMacSystemFont, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(String(c.issues.length), x, y + 0.5 * dpr);
+      } else if (i.type === 'leak') {
         // a drop
         ctx.beginPath();
         ctx.moveTo(x, y - 5 * u);
@@ -399,13 +550,12 @@ export class CanvasView {
     const { ctx, dpr } = this;
     const W = this.canvas.width / dpr;
     const H = this.canvas.height / dpr;
-    for (const i of this.issues) {
-      if (i.status !== 'open') continue;
+    for (const i of this.visibleIssues()) {
       const b = this.issueBox(i);
       if (b.x > W || b.y > H || b.x + b.side < 0 || b.y + b.side < 0) continue;
       const focused = i.id === this.focusId;
-      const color = i.severity === 'critical' ? this.colors.critical : i.severity === 'warning' ? this.colors.warning : this.colors.info;
-      const r = (focused ? 1.9 : 1.5) * dpr;
+      const color = i.status === 'ignored' ? this.colors.ignored : sevColor(this.colors, i.severity);
+      const r = (focused ? 1.9 : i.status === 'ignored' ? 1.2 : 1.5) * dpr;
       ctx.save();
       if (focused) {
         ctx.fillStyle = color + '1f';
@@ -499,7 +649,14 @@ function readColors() {
     critical: get('--critical', '#e5484d'),
     warning: get('--warning', '#f5a524'),
     info: get('--info', '#3e8cf0'),
+    ok: get('--ok', '#2f9e6b'),
+    ignored: get('--ignored', '#9a9aa0'),
     checkerA: get('--checker-a', '#e9e9ec'),
     checkerB: get('--checker-b', '#dedee2'),
   };
+}
+
+/** @param {ReturnType<typeof readColors>} c @param {string} sev */
+function sevColor(c, sev) {
+  return sev === 'critical' ? c.critical : sev === 'warning' ? c.warning : c.info;
 }

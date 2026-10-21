@@ -41,6 +41,7 @@
   --warning: #f5a524;
   --info: #3e8cf0;
   --ok: #2f9e6b;
+  --ignored: #9a9aa0;
   --checker-a: #ececef;
   --checker-b: #e0e0e4;
 
@@ -73,6 +74,7 @@
     --grid: rgba(120, 120, 130, 0.35);
     --nav-dim: rgba(0, 0, 0, 0.5);
     --ok: #3fbf86;
+    --ignored: #77777d;
     --checker-a: #2a2a2e;
     --checker-b: #232326;
   }
@@ -598,6 +600,88 @@ input[type="range"]::-moz-range-thumb { width: 14px; height: 14px; border: 0; bo
 .tb-icon svg { width: 18px; height: 18px; }
 .tb-icon[aria-expanded="true"] { background: var(--control-press); color: var(--text); }
 
+/* Undo / redo + edited dot */
+.tb-icon[aria-disabled="true"] { opacity: 0.3; }
+.edit-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); margin-left: -2px; }
+.edit-dot[hidden] { display: none; }
+
+/* ---------- Fix tray ---------- */
+
+.fix-tray {
+  position: absolute;
+  left: 50%;
+  bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(760px, calc(100% - 300px));
+  padding: 8px 8px 8px 6px;
+  border-radius: 14px;
+  background: var(--float);
+  box-shadow: var(--float-shadow);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  transform: translate(-50%, 12px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 180ms var(--ease-out), transform 220ms var(--ease-out);
+  z-index: 3;
+}
+.fix-tray[data-open="true"] { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+.ft-nav { display: flex; align-items: center; gap: 2px; }
+.ft-nav .icon-btn svg { width: 12px; height: 12px; }
+.ft-next svg { transform: scaleX(-1); }
+.ft-count { font: 500 11.5px var(--font); font-variant-numeric: tabular-nums; color: var(--text-2); min-width: 30px; text-align: center; }
+.ft-info { display: flex; align-items: flex-start; gap: 8px; min-width: 0; flex: 1 1 auto; }
+.ft-sev { width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; flex: none; background: var(--critical); }
+.ft-sev[data-severity="info"] { background: var(--info); }
+.ft-sev[data-severity="warning"] { background: var(--warning); }
+.ft-sev[data-status="ignored"] { background: var(--ignored); }
+.ft-text { min-width: 0; }
+.ft-title { font-weight: 600; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ft-detail { color: var(--text-2); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ft-tools { display: flex; gap: 2px; padding: 0 6px; border-left: 1px solid var(--hair); border-right: 1px solid var(--hair); }
+.ft-tools .tool { width: 30px; height: 30px; }
+.ft-tools .tool svg { width: 18px; height: 18px; }
+.fix-tray .btn { height: 30px; }
+.ft-close { width: 26px; height: 26px; }
+.ft-close svg { width: 12px; height: 12px; }
+@media (max-width: 1100px) { .ft-tools { display: none; } }
+
+/* Ignored issues in the list */
+.issue-sub { margin: 10px 8px 2px; font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3); }
+.issue-row[data-status="ignored"] { opacity: 0.6; }
+.issue-row[data-status="ignored"] .sev { background: var(--ignored) !important; }
+
+/* Switch */
+.setting-row { flex-direction: row; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--hair); }
+.switch {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: none;
+  width: 32px;
+  height: 19px;
+  border-radius: 999px;
+  background: var(--control-press);
+  position: relative;
+  transition: background-color 150ms ease;
+  margin: 0;
+}
+.switch::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  transition: transform 180ms var(--ease-out);
+}
+.switch:checked { background: var(--accent); }
+.switch:checked::after { transform: translateX(13px); }
+
 /* ---------- Settings popover ---------- */
 
 .popover {
@@ -680,5 +764,6 @@ input[type="range"]::-moz-range-thumb { width: 14px; height: 14px; border: 0; bo
 
 @media (prefers-reduced-motion: reduce) {
   .drop-overlay, .hint, .toast, .tooltip, .popover { transform: none !important; }
+  .fix-tray { transform: translate(-50%, 0) !important; }
   .btn:active, .tool:active, .icon-btn:active { transform: none !important; }
 }

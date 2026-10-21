@@ -3,10 +3,10 @@
 
 const KEY = 'ajoure.settings';
 
-/** @typedef {{markers: 'box'|'pin'}} Settings */
+/** @typedef {{markers: 'box'|'pin', showIgnored: boolean}} Settings */
 
 /** @type {Settings} */
-export const DEFAULTS = Object.freeze({ markers: 'box' });
+export const DEFAULTS = Object.freeze({ markers: /** @type {'box'|'pin'} */ ('box'), showIgnored: true });
 
 /** @returns {Settings} */
 export function loadSettings() {
@@ -15,6 +15,7 @@ export function loadSettings() {
     const saved = raw ? JSON.parse(raw) : {};
     const s = { ...DEFAULTS, ...saved };
     if (s.markers !== 'box' && s.markers !== 'pin') s.markers = DEFAULTS.markers;
+    s.showIgnored = s.showIgnored !== false;
     return s;
   } catch {
     return { ...DEFAULTS };

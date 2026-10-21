@@ -1,28 +1,30 @@
-# State — updated 2026-10-20
+# State — updated 2026-10-21
 
 ## Working
-- Milestone 1 (spec 001): window layout, drop / paste / ⌘O / Julie sample, zoom & pan (trackpad, mouse, Space-drag, Zoom tool, ⌘ and ⌃⌘ shortcuts, bare +/−), Fit/100% buttons, Navigator, light/dark, tooltips.
-- Milestone 2 (spec 002): instant scan in a Web Worker on every image — ink threshold, regions, waste, wood/hole guess, leaks (stroke-end gaps + necks), islands, specks.
-- Scan UI: top-bar summary ("2 leaks · 1 island"), issue markers on canvas (dotted box by default, round pin optional in Settings) + Navigator dots, Issues list in plain words, click pin/row → glide & highlight (Esc clears), Wood/Hole view.
-- Julie: 2 leaks (the two pockets sealed by hand) + 1 island (the i dot); 99.9% pixel match with the hand-made result once leaks are closed; ~0.7–1 s in Node, ~1.6 s in the browser.
-- `npm test`: 24 tests (viewport, engine on synthetic drawings, Julie acceptance). `node tools/scan.mjs <image>` prints a scan and writes out/scan.png.
-- `Start Ajoure.command` double-click launcher.
+- Milestone 1 (spec 001): window, drop / paste / ⌘O / Julie sample, zoom & pan (trackpad, mouse, Space-drag, Zoom tool, ⌘ and ⌃⌘ shortcuts, bare +/−), Fit/100% buttons, Navigator, light/dark, tooltips, Settings (⌘,).
+- Milestone 2 (spec 002): instant scan in a Web Worker — threshold, regions, waste, wood/hole guess, leaks (stroke-end gaps + necks), islands, specks; Wood/Hole view; issue markers (dotted box default, pin optional).
+- Milestone 3 (spec 003): fix tray (◀ n/N ▶, tools for the issue, quick fix, Ignore/Restore), N/P/Enter/I/Esc, resolved markers flash green, ignored markers hollow grey (Settings: show/hide), "Ignored" section in the list, pin clustering when zoomed out, focus moves on when an issue is fixed.
+- Milestone 4 (spec 004): Bucket (hover tint shows leak spill; ⇧ wood, ⌥ hole; switches to Wood/Hole view), Wood/Hole/Revert brushes ([ ] size, ⇧-click straight line, true-size cursor), Connector (A→B bridge, 1.2 × min wood), Separator (drag cut, min hole), undo/redo (⌘Z / ⇧⌘Z / buttons, 100 steps), re-check after every edit (~1 s on Julie, debounced, latest state only).
+- Quick fixes: Close gap (leaks, drawn in the drawing's stroke width) and Remove (islands/specks).
+- Julie end-to-end in the browser: 3 × Enter → "✓ No leaks or islands"; undo/redo walks it back and forth.
+- `npm test`: 37 tests (viewport, engine, edits, document/undo, Julie acceptance).
 
 ## In flight
-- Milestone 2 built; waiting for Giampi's hands-on check on his own images.
+- Milestones 3 + 4 built; waiting for Giampi's hands-on check (tool feel, brush sizes, tray layout on a smaller screen).
 
 ## Next up
-1. Giampi tries the scan on Julie and 2–3 other AI images; collect misses (false leaks, wrong wood/hole guesses).
-2. Milestone 3 — Issues & focus: Fix tray, N/P next/previous, Ignore, resolved/ignored pin states, pin clustering when zoomed out.
-3. Milestone 4 — Fixing tools: Bucket (hover preview shows leak spill), wood/hole brush, connector, separator, revert, undo/redo, live re-scan.
-4. Milestone 5 — Flow test (Quick, then animated water).
-5. Milestone 6 — Adjust panel + thin wood / near-touch / speck-hole checks + real size.
-6. Milestone 7 — Floating details, outer-cut confirm, cut preview, SVG export for XCS, project save; then a real cut.
+1. Giampi tries fixing Julie and 2–3 other AI images with the tools; collect what feels slow or wrong.
+2. Milestone 5 — Flow test (Quick fill, then animated water escaping through gaps).
+3. Milestone 6 — Adjust panel + thin wood / near-touch / speck-hole checks + real size entry.
+4. Milestone 7 — Floating details, outer-cut confirm, cut preview, SVG export for XCS, project save/autosave; then a real cut.
 
 ## Known broken
-- Wood/hole guess is tuned on one image (Julie); expect misses on other styles — the Bucket (milestone 4) is the safety net.
-- Only mm-estimated scale (50 mm wide) until size entry exists; leak widths shown in mm are estimates.
-- Filled (silhouette) art: treated as dark = wood; no leak detection yet in that mode.
+- Re-check is a full re-analysis (~1 s on Julie, more on big images); SPEC target is < 300 ms → incremental analysis later.
+- Edits live only until the page reloads (no project save yet — milestone 7).
+- Connector is straight only (no midpoint curving yet).
+- Wood/hole guess tuned on one image (Julie); the Bucket is the safety net. Re-checks lean on the previous guess for stability.
+- Scale is still the 50 mm estimate; mm values are estimates.
+- Navigator thumbnail doesn't show paint strokes in Design view.
 
 ## Open questions
-- Julie's i dot is a real island in the hand-made file too: was it glued, bridged, or did it fall out? (Decides whether "island" should default to bridge or drop.)
+- Julie's i dot: glued, bridged, or fell out? (Decides whether Remove or Connector should be the island quick fix.)

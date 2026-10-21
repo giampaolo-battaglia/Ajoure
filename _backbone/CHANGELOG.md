@@ -5,6 +5,11 @@ for the user, not which lines were edited.
 
 ---
 
+## 2026-10-21
+- Milestone 3: fix tray at the bottom of the canvas for the focused issue — ◀ ▶ (N/P), the right tools, a quick fix (Enter: Close gap / Remove) and Ignore (I); fixed issues flash green and focus moves to the next; ignored ones stay as grey markers (toggle in Settings) and in an "Ignored" section; overlapping pins merge into a count when zoomed out.
+- Milestone 4: Bucket, Wood/Hole/Revert brushes, Connector and Separator all work, on a separate edits layer (the original image is never changed); every edit is re-checked automatically; undo/redo with ⌘Z / ⇧⌘Z or the arrows by the file name.
+- Re-checks are stable: they lean on the previous answer, so fixing one leak no longer makes new ones appear elsewhere; undoing a Bucket click restores the original guess.
+
 ## 2026-10-20
 - Issue markers are now red dotted squares around each problem zone (tinted when selected); Settings (top-right button or ⌘,) lets you switch back to round pins. The choice is remembered.
 
