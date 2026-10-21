@@ -60,3 +60,10 @@ with a new one that says what changed and why.
 **Because:** The engine already knows the exact gap segment, so the best fix costs nothing; it turns Julie into three Enters. Several candidates to swipe through stay in v2 (SPEC §11).
 **Rejected:** Shipping the tray with tools only (slower, and the data was already there).
 **Revisit if:** Giampi prefers bridging islands by default (then Connector becomes the island quick fix).
+
+## 009 — Water preview: geodesic pour, paced by what's on screen
+**Date:** 2026-10-21
+**Chose:** Water fills pixels in order of walking distance from the cursor inside the area (5/7/11 chamfer steps, never jumping a line), nudged by a smooth image-space ripple for a liquid edge. The pour is timed by the share of the on-screen area that's wet, not by distance, and each frame paints only the newly reached pixels. Areas over 250k px are computed in a small worker. Tint stays the default; Water is a Settings choice.
+**Because:** Paced by distance, a zoomed-in view sat still while the water travelled off-screen, then flooded in one frame. The plain 5/7 distance gave octagonal fronts that looked mechanical. The area outside the piece (~1M px) took ~120–180 ms on the main thread.
+**Rejected:** Real fluid simulation (heavy, no clearer); restarting the pour on every mouse move (it restarts only when the cursor enters a different area).
+**Revisit if:** milestone 5's Flow test needs a different look; reuse this engine rather than writing a second one.

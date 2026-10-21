@@ -6,6 +6,8 @@ for the user, not which lines were edited.
 ---
 
 ## 2026-10-21
+- Water preview for the Bucket (Settings → Bucket preview → Water): water poured at the cursor spreads through the area with ripples and a wavy deep-blue front; a leak shows as water escaping through the gap. Tint stays the default. Big areas are worked out in the background so the cursor never stalls.
+- Settings: "Show ignored issues" row laid out side by side again (a CSS rule was overriding it).
 - Milestone 3: fix tray at the bottom of the canvas for the focused issue — ◀ ▶ (N/P), the right tools, a quick fix (Enter: Close gap / Remove) and Ignore (I); fixed issues flash green and focus moves to the next; ignored ones stay as grey markers (toggle in Settings) and in an "Ignored" section; overlapping pins merge into a count when zoomed out.
 - Milestone 4: Bucket, Wood/Hole/Revert brushes, Connector and Separator all work, on a separate edits layer (the original image is never changed); every edit is re-checked automatically; undo/redo with ⌘Z / ⇧⌘Z or the arrows by the file name.
 - Re-checks are stable: they lean on the previous answer, so fixing one leak no longer makes new ones appear elsewhere; undoing a Bucket click restores the original guess.

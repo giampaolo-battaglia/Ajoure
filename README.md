@@ -47,7 +47,7 @@ Or fix it by hand:
 
 | Tool | Key | What it does |
 |---|---|---|
-| Bucket | B | Click an area to swap wood ↔ hole (⇧ wood, ⌥ hole); hovering shows how far it spills |
+| Bucket | B | Click an area to swap wood ↔ hole (⇧ wood, ⌥ hole); hovering shows how far it spills — as a tint, or as flowing water (Settings → Bucket preview) |
 | Wood brush | W | Paint material — close a gap, thicken a stroke |
 | Hole brush | E | Paint a cut — separate strokes, open a hole |
 | Revert brush | R | Wipe your edits back to the original |

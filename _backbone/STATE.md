@@ -5,16 +5,17 @@
 - Milestone 2 (spec 002): instant scan in a Web Worker — threshold, regions, waste, wood/hole guess, leaks (stroke-end gaps + necks), islands, specks; Wood/Hole view; issue markers (dotted box default, pin optional).
 - Milestone 3 (spec 003): fix tray (◀ n/N ▶, tools for the issue, quick fix, Ignore/Restore), N/P/Enter/I/Esc, resolved markers flash green, ignored markers hollow grey (Settings: show/hide), "Ignored" section in the list, pin clustering when zoomed out, focus moves on when an issue is fixed.
 - Milestone 4 (spec 004): Bucket (hover tint shows leak spill; ⇧ wood, ⌥ hole; switches to Wood/Hole view), Wood/Hole/Revert brushes ([ ] size, ⇧-click straight line, true-size cursor), Connector (A→B bridge, 1.2 × min wood), Separator (drag cut, min hole), undo/redo (⌘Z / ⇧⌘Z / buttons, 100 steps), re-check after every edit (~1 s on Julie, debounced, latest state only).
+- Bucket preview setting: Tint (default) or Water — animated pour paced to what's on screen, works outside the piece too (src/app/water.js, src/worker/water.worker.js).
 - Quick fixes: Close gap (leaks, drawn in the drawing's stroke width) and Remove (islands/specks).
 - Julie end-to-end in the browser: 3 × Enter → "✓ No leaks or islands"; undo/redo walks it back and forth.
-- `npm test`: 37 tests (viewport, engine, edits, document/undo, Julie acceptance).
+- `npm test`: 40 tests (viewport, engine, edits, document/undo, Julie acceptance).
 
 ## In flight
 - Milestones 3 + 4 built; waiting for Giampi's hands-on check (tool feel, brush sizes, tray layout on a smaller screen).
 
 ## Next up
 1. Giampi tries fixing Julie and 2–3 other AI images with the tools; collect what feels slow or wrong.
-2. Milestone 5 — Flow test (Quick fill, then animated water escaping through gaps).
+2. Milestone 5 — Flow test (Quick fill, then animated water escaping through gaps). The water engine already exists (pourOrder / wobble / Pour) — reuse it from a few seed points instead of the cursor.
 3. Milestone 6 — Adjust panel + thin wood / near-touch / speck-hole checks + real size entry.
 4. Milestone 7 — Floating details, outer-cut confirm, cut preview, SVG export for XCS, project save/autosave; then a real cut.
 
