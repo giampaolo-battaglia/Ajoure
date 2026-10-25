@@ -61,6 +61,8 @@ export class CanvasView {
     this.showIgnored = true;
     /** @type {HTMLCanvasElement|null} the user's paint (wood / hole), image-sized */
     this.editLayer = null;
+    /** @type {HTMLCanvasElement|null} the eraser's paint (paper white), image-sized */
+    this.paperLayer = null;
     /**
      * Bucket hover preview (image coords). `tick` advances an animated pour and says
      * whether it's still flowing; `ripple` is where the water was poured.
@@ -279,9 +281,13 @@ export class CanvasView {
     this.requestRender();
   }
 
-  /** @param {HTMLCanvasElement|null} layer */
-  setEditLayer(layer) {
+  /**
+   * @param {HTMLCanvasElement|null} layer wood / hole paint
+   * @param {HTMLCanvasElement|null} [paper] eraser paint (shown on the drawing only; Wood/Hole shows the scan there)
+   */
+  setEditLayer(layer, paper = null) {
     this.editLayer = layer;
+    this.paperLayer = paper;
     this.requestRender();
   }
 
@@ -438,6 +444,7 @@ export class CanvasView {
     const src = showWood ? /** @type {ImageBitmap} */ (this.woodHole) : /** @type {ImageBitmap|HTMLCanvasElement} */ (this.designSource());
     ctx.drawImage(src, r.x, r.y, r.w, r.h, ox + r.x * s, oy + r.y * s, r.w * s, r.h * s);
     // The user's paint shows at once, before the re-check comes back.
+    if (this.paperLayer && !this.showOriginal && !showWood) ctx.drawImage(this.paperLayer, r.x, r.y, r.w, r.h, ox + r.x * s, oy + r.y * s, r.w * s, r.h * s);
     if (this.editLayer && !this.showOriginal) ctx.drawImage(this.editLayer, r.x, r.y, r.w, r.h, ox + r.x * s, oy + r.y * s, r.w * s, r.h * s);
     if (this.flow) this.drawFlow(ox, oy, s);
     this.drawHover(ox, oy, s);

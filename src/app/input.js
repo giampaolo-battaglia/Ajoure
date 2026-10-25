@@ -10,7 +10,7 @@ import { BRUSH_TOOLS } from './tools.js';
 
 /** Single-key tool shortcuts (SPEC §6.5). */
 const TOOL_KEYS = /** @type {Record<string, ToolId>} */ ({
-  h: 'hand', z: 'zoom', b: 'bucket', g: 'engrave', w: 'wood', e: 'hole', r: 'revert', c: 'connector', x: 'separator',
+  h: 'hand', z: 'zoom', b: 'bucket', g: 'engrave', w: 'wood', k: 'hole', e: 'eraser', r: 'revert', c: 'connector', x: 'separator',
 });
 
 const PINCH_K = 0.01; // ctrl+wheel (pinch) sensitivity

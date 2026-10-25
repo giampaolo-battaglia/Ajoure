@@ -19,7 +19,9 @@
 - Milestone 7 (spec 007), first part: **Export SVG** (⇧⌘E) for XCS — mm size, closed smooth cut paths (holes first), score lines for floating details (or engrave / drop), warnings for open issues and the size estimate; **Cut** view shows the piece in basswood from the same geometry.
 
 - Spec 008: **Plan view** (what stays / falls out; what the laser cuts, scores, engraves) with legend, click-to-pick-out and hover explanations; **Engrave tool** (G): click an area to burn it solid (outline included), click a line to switch score ↔ engrave; engraving in the Cut view and the SVG. Score lines now come out whole (graph-based skeleton tracing).
-- `npm test`: 72 tests.
+- Save in place + versions inside the `.ajoure` file (History → Saved versions), Save as… (⇧⌘S). Eraser (E) turns lines back into paper; Hole brush is K; Bucket on hole paint makes it wood.
+- The `.ajoure` file keeps the full step history (up to 500 steps, with times; settings changes included) and saved-version markers; gzip-compressed (format 3). History → click any step, even after reopening.
+- `npm test`: 77 tests.
 
 ## In flight
 - Milestones 4–6 built; waiting for Giampi's hands-on check (Flow test feel, Adjust sliders, material values, near-touch usefulness).

@@ -5,6 +5,18 @@ for the user, not which lines were edited.
 
 ---
 
+## 2026-10-25 (evening)
+- **Go back in time, even after reopening:** the project file now keeps the whole step history — every stroke, click, engraving and settings change, with its time. History lists them; click any step to go back to it (⌘Z / ⇧⌘Z still work), and "Saved" tags show where you saved.
+- **Width, material and Adjust changes are steps too** (undoable; a slider drag is one step).
+- **Saved versions** are now markers in that history instead of full copies (much smaller files). Project files are compressed; older files still open.
+- Measured: a typical fixing session adds 2–8 kB to the file; 100 steps of heavy painting ~35 kB; the image itself is ~1.2 MB (Julie).
+
+## 2026-10-25 (later)
+- **Save works like a document now.** The first Save asks where; after that ⌘S writes back into the same `.ajoure` file (Chrome). Every save is also kept as a **version inside the file** (up to 30): History → *Saved versions* shows them with the time and what the scan said, and one click brings that state back. ⇧⌘S (or ⌥-click Save) = Save as… a new file. Opening a project with ⌘O or by dropping it keeps the link to the file. Safari can't write back into a file, so there each save lands in Downloads, with all the versions inside.
+- New **Eraser** (E): removes lines. What you erase becomes part of the area around it, so a shape you open up joins its neighbour (and takes its wood/hole).
+- The **Hole brush** moved to **K** (it paints a cut that always falls out — it's not an eraser).
+- **Bucket on hole paint** now works: clicking a cut you painted turns it back into paper and makes that area wood, in one undo step (before: "That's a line or a cut").
+
 ## 2026-10-25
 - New **Plan** view: wood you keep, parts that fall out (hatched), and what the laser does — red cut, blue score, brown engrave — with a legend. Click a legend item to pick it out; hover anything for a plain-words explanation.
 - New **Engrave** tool (G): click a shape to burn it solid, outline included (the bat filled in); click again to clear. Click a line drawn on the wood to switch it between a thin score and a bold engrave. Works on holes too (they stay, engraved).

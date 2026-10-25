@@ -7,7 +7,7 @@ import { canvas, paint } from './helpers/draw.mjs';
 import { readPng } from './helpers/png.mjs';
 import { julieTruth, agreement } from './helpers/julie-truth.mjs';
 import {
-  prepare, analyzeEdited, EDIT_WOOD, EDIT_HOLE, WOOD, PX_WOOD, PX_HOLE,
+  prepare, analyzeEdited, EDIT_WOOD, EDIT_HOLE, EDIT_PAPER, WOOD, PX_WOOD, PX_HOLE,
 } from '../src/engine/analyze.js';
 
 const W = 240, H = 240;
@@ -55,6 +55,36 @@ test('a hole cut across a line does not merge the regions on either side', () =>
   assert.equal(at(r.classMap, 120, 120), PX_HOLE);
   assert.equal(r.summary.islands, 0);
   assert.equal(r.summary.leaks, 0);
+});
+
+test('the eraser turns a line back into paper: a star outline opened by it joins the area around it', () => {
+  const c = framed();
+  c.circle(120, 120, 20); // a "star" inside the big area
+  const base = prepare(c.rgba(), W, H);
+  const seeds = [{ x: 60, y: 60, cls: WOOD }]; // the big area is wood
+  const before = analyzeEdited(base, null, seeds);
+  assert.notEqual(before.labels[120 * W + 120], before.labels[60 * W + 60]);
+  const edits = new Uint8Array(W * H);
+  paint(edits, W, H, 138, 120, 143, 120, 4, EDIT_PAPER); // erase a bit of the circle's right side
+  const after = analyzeEdited(base, edits, seeds);
+  assert.equal(after.labels[120 * W + 120], after.labels[60 * W + 60], 'one area now');
+  assert.equal(at(after.classMap, 120, 120), PX_WOOD);
+  assert.equal(at(after.classMap, 140, 120), PX_WOOD, 'the erased pixels are paper of that area');
+});
+
+test('hole paint turned back into paper (the Bucket on a painted cut) follows the area again', () => {
+  const c = framed();
+  c.circle(120, 120, 20);
+  const base = prepare(c.rgba(), W, H);
+  const edits = new Uint8Array(W * H);
+  paint(edits, W, H, 136, 120, 146, 120, 4, EDIT_HOLE); // "erased" with the hole brush: a forced cut
+  const cut = analyzeEdited(base, edits, [{ x: 60, y: 60, cls: WOOD }]);
+  assert.equal(at(cut.classMap, 141, 120), PX_HOLE);
+  assert.equal(cut.labels[120 * W + 141], 0, 'a cut is not an area: the Bucket can’t fill it');
+  for (let p = 0; p < edits.length; p++) if (edits[p] === EDIT_HOLE) edits[p] = EDIT_PAPER;
+  const fixed = analyzeEdited(base, edits, [{ x: 60, y: 60, cls: WOOD }, { x: 141, y: 120, cls: WOOD }]);
+  assert.equal(at(fixed.classMap, 141, 120), PX_WOOD);
+  assert.equal(at(fixed.classMap, 120, 120), PX_WOOD);
 });
 
 test('a Bucket click forces its region, latest click wins', () => {

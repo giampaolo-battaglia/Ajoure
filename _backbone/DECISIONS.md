@@ -141,3 +141,21 @@ with a new one that says what changed and why.
 **Chose:** All engraved areas in one path, all engraved lines in another, `fill-rule="evenodd"` on the group.
 **Because:** One path per contour filled a ring's inner contour as a second solid shape.
 **Revisit if:** XCS ignores fill-rule (then emit outer + its holes per path with opposite winding).
+
+## 022 — Save like a document, with the versions inside the file
+**Date:** 2026-10-25
+**Chose:** Keep the file handle (File System Access API) so ⌘S writes back to the same `.ajoure`; append each save to a `versions` list inside the file (max 30; the image is stored once, a version is the edits RLE + clicks + settings, a few kB). Save as… for a new file. Format version 2 (version-1 files open with no history).
+**Because:** Giampi expected Word-like saving instead of a new file per save; versions in the file travel with it and need no extra folder.
+**Revisit if:** files grow too big (thin out old versions) or Safari gains write-back (it currently downloads a copy per save).
+
+## 023 — An Eraser separate from the Hole brush; E goes to the Eraser
+**Date:** 2026-10-25
+**Chose:** New EDIT_PAPER paint (line → paper, joins the area around it); E = Eraser, Hole brush = K. The Bucket on hole paint converts that stroke to paper + a wood click.
+**Because:** Giampi pressed E to "erase" a line around a star; the Hole brush painted a forced cut, which the Bucket couldn't make wood ("That's a line or a cut") — a dead end.
+**Revisit if:** the K shortcut feels wrong.
+
+## 024 — Save the step history; versions are markers in it
+**Date:** 2026-10-25
+**Chose:** Persist the undo/redo steps (each = the small rect patch it changed, RLE + the click it added, or the settings before/after) with ids and times; a saved version = the id of the step it was at. Settings (adjust/width/material) became document steps. History cap raised to 500 steps; the file is gzip-compressed (format 3; formats 1–2 still open).
+**Because:** Giampi wants to "go back in time" after reopening. Measured on Julie: a typical session adds 2–8 kB; full-copy versions (decision 022) cost ~110 kB each after heavy editing.
+**Revisit if:** going back and then editing drops later saved versions (linear history, like any undo) and that surprises people — then keep branches.

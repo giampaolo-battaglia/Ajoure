@@ -1,11 +1,16 @@
 // @ts-check
 // The editable document: an edits layer over the original image (never changed), Bucket clicks,
-// and undo/redo. Pure data, no DOM.
+// the scan settings (adjustments, width, material), and undo/redo over all of them. The history is
+// saved inside the project file, so you can go back in time after reopening. Pure data, no DOM.
 
 import { EDIT_NONE } from '../engine/analyze.js';
 
 /** @typedef {import('../engine/analyze.js').Seed} Seed */
 /** @typedef {[number, number, number, number]} Rect  x, y, w, h in image px */
+/**
+ * What a scan is run with; part of the document so it's undoable and saved with the history.
+ * @typedef {{adjust: import('../engine/adjust.js').Adjustments, widthMm: number|null, material: string}} DocSettings
+ */
 /**
  * @typedef {Object} Patch
  * @property {string} label
@@ -14,9 +19,16 @@ import { EDIT_NONE } from '../engine/analyze.js';
  * @property {Uint8Array|null} after
  * @property {Seed[]} seedsBefore
  * @property {Seed[]} seedsAfter
+ * @property {{before: DocSettings, after: DocSettings}} [settings] a settings change
+ * @property {number} [id] unique within the document (saved versions point at it)
+ * @property {number} [at] when (ms since 1970)
+ * @property {string} [key] settings changes with the same key in a row merge into one step
  */
 
-const MAX_UNDO = 100;
+/** Steps kept (in memory and in the file). A step is ~1–2 kB; 500 is well under the image's size. */
+export const MAX_UNDO = 500;
+/** Settings changes to the same control within this long merge into one step (a slider drag). */
+const MERGE_MS = 2000;
 
 export class EditDoc {
   /** @param {number} w @param {number} h */
@@ -36,6 +48,49 @@ export class EditDoc {
     this.stroke = null;
     /** @type {[number, number]|null} last painted point, for ⇧-click straight lines */
     this.lastPoint = null;
+    /** @type {DocSettings} */
+    this.settings = { adjust: /** @type {any} */ ({}), widthMm: null, material: '' };
+    /** next step id */
+    this.nextId = 1;
+    /** the state before the oldest step still kept: 0 = as opened; else the id of the last step dropped */
+    this.baseId = 0;
+  }
+
+  /** The step the document is at now (0 / baseId = before any kept step). */
+  get stepId() {
+    const top = this.undoStack[this.undoStack.length - 1];
+    return top ? /** @type {number} */ (top.id) : this.baseId;
+  }
+
+  /** Is a step (by id) still in the history? */
+  hasStep(/** @type {number} */ id) {
+    return id === this.baseId || this.undoStack.some((p) => p.id === id) || this.redoStack.some((p) => p.id === id);
+  }
+
+  // ---- settings -----------------------------------------------------------------
+
+  /**
+   * Change the scan settings as an undoable step. Changes to the same control (`key`) in a row,
+   * within a couple of seconds, merge into one step — dragging a slider is one step, not fifty.
+   * @param {DocSettings} next @param {string} label @param {string} [key]
+   */
+  changeSettings(next, label, key) {
+    const before = cloneSettings(this.settings);
+    const after = cloneSettings(next);
+    if (JSON.stringify(before) === JSON.stringify(after)) return;
+    const top = this.undoStack[this.undoStack.length - 1];
+    const now = Date.now();
+    if (key && top && top.key === key && top.settings && !this.redoStack.length && now - (top.at || 0) < MERGE_MS) {
+      top.settings.after = after;
+      top.label = label;
+      top.at = now;
+      this.settings = cloneSettings(after);
+      this.emit(null, label);
+      return;
+    }
+    this.settings = cloneSettings(after);
+    this.push({ label, rect: null, before: null, after: null, seedsBefore: this.seeds.slice(), seedsAfter: this.seeds.slice(), settings: { before, after }, key });
+    this.emit(null, label);
   }
 
   /** @param {(rect: Rect|null, label: string) => void} fn */
@@ -177,8 +232,10 @@ export class EditDoc {
 
   /** @param {Patch} p */
   push(p) {
+    p.id = this.nextId++;
+    p.at = p.at || Date.now();
     this.undoStack.push(p);
-    if (this.undoStack.length > MAX_UNDO) this.undoStack.shift();
+    if (this.undoStack.length > MAX_UNDO) this.baseId = /** @type {number} */ (/** @type {Patch} */ (this.undoStack.shift()).id);
     this.redoStack = [];
   }
 
@@ -206,6 +263,7 @@ export class EditDoc {
   apply(p, forward) {
     if (p.rect) paste(this.edits, this.w, p.rect, /** @type {Uint8Array} */ (forward ? p.after : p.before));
     this.seeds = (forward ? p.seedsAfter : p.seedsBefore).slice();
+    if (p.settings) this.settings = cloneSettings(forward ? p.settings.after : p.settings.before);
     this.lastPoint = null;
   }
 
@@ -215,6 +273,11 @@ export class EditDoc {
     for (let i = 0; i < this.edits.length; i++) if (this.edits[i] !== EDIT_NONE) return true;
     return false;
   }
+}
+
+/** @param {DocSettings} s @returns {DocSettings} */
+export function cloneSettings(s) {
+  return { adjust: { ...s.adjust }, widthMm: s.widthMm, material: s.material };
 }
 
 /** @param {Rect|null} a @param {Rect|null} b @returns {Rect|null} */

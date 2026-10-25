@@ -94,7 +94,7 @@ export const REFERENCE_WIDTH_MM = 50;
 const PRIOR_WEIGHT = 1.5;
 
 /** Edit values in the edits layer (one byte per pixel). */
-export const EDIT_NONE = 0, EDIT_WOOD = 1, EDIT_HOLE = 2;
+export const EDIT_NONE = 0, EDIT_WOOD = 1, EDIT_HOLE = 2, EDIT_PAPER = 3;
 
 /**
  * Seed classes beyond WOOD (1) and HOLE (2). An engraved area is wood whose surface is burned;
@@ -148,7 +148,7 @@ export function prepare(rgba, w, h, opts = {}) {
 /**
  * Full scan of a prepared image with the user's edits applied.
  * @param {Base} base
- * @param {Uint8Array|null} edits  per pixel: EDIT_NONE / EDIT_WOOD (material) / EDIT_HOLE (cut)
+ * @param {Uint8Array|null} edits  per pixel: EDIT_NONE / EDIT_WOOD (material) / EDIT_HOLE (cut) / EDIT_PAPER (erased)
  * @param {Seed[]} seeds  Bucket clicks, oldest first
  * @param {ScanOptions} [opts]
  */
@@ -166,7 +166,8 @@ export function analyzeEdited(base, edits, seeds = [], opts = {}) {
   };
   const profile = opts.profile ?? BASSWOOD_3MM;
 
-  // 1. Apply edits: wood paint becomes line, hole paint becomes a cut (never wood, never merges regions).
+  // 1. Apply edits: wood paint becomes line, hole paint becomes a cut (never wood, never merges regions),
+  //    the eraser turns lines back into paper (which then belongs to the area around it).
   const ink = Uint8Array.from(base.ink);
   const cut = new Uint8Array(n);
   if (edits) {
@@ -176,7 +177,7 @@ export function analyzeEdited(base, edits, seeds = [], opts = {}) {
       else if (e === EDIT_HOLE) {
         ink[p] = 0;
         cut[p] = 1;
-      }
+      } else if (e === EDIT_PAPER) ink[p] = 0;
     }
   }
   /** Lines and cuts both separate paper regions. */

@@ -1,22 +1,26 @@
 // @ts-check
-// Fixing tools (SPEC §6.5): Bucket, Engrave, Wood brush, Hole brush, Revert brush, Connector, Separator.
+// Fixing tools (SPEC §6.5): Bucket, Engrave, Wood brush, Hole brush, Eraser, Revert brush, Connector, Separator.
 // Works in image pixels; the document records the edits, the view shows them.
 
-import { EDIT_NONE, EDIT_WOOD, EDIT_HOLE, WOOD, HOLE, WASTE, PX_LINE, BASSWOOD_3MM } from '../engine/analyze.js';
+import { EDIT_NONE, EDIT_WOOD, EDIT_HOLE, EDIT_PAPER, WOOD, HOLE, WASTE, PX_LINE, BASSWOOD_3MM } from '../engine/analyze.js';
 import { pourOrder, wobble, Pour } from './water.js';
 import { visibleImageRect } from './viewport.js';
 import { union } from './doc.js';
 
-/** @typedef {'hand'|'zoom'|'bucket'|'engrave'|'wood'|'hole'|'revert'|'connector'|'separator'} ToolId */
+/** @typedef {'hand'|'zoom'|'bucket'|'engrave'|'wood'|'hole'|'eraser'|'revert'|'connector'|'separator'} ToolId */
+/** @typedef {'wood'|'hole'|'eraser'|'revert'|'connector'|'separator'} SizedTool */
+/** Brushes that paint the edits layer, and what they paint. */
+const PAINT = /** @type {Record<string, number>} */ ({ wood: EDIT_WOOD, hole: EDIT_HOLE, eraser: EDIT_PAPER, revert: EDIT_NONE });
+const SIZED = ['wood', 'hole', 'eraser', 'revert', 'connector', 'separator'];
 /** @typedef {import('./doc.js').EditDoc} EditDoc */
 /** @typedef {import('./doc.js').Rect} Rect */
 /** @typedef {import('./scanner.js').ScanResult} ScanResult */
 /** @typedef {import('./view.js').CanvasView} CanvasView */
 
 /** Tools that change the design (everything but Hand and Zoom). */
-export const EDIT_TOOLS = /** @type {ToolId[]} */ (['bucket', 'engrave', 'wood', 'hole', 'revert', 'connector', 'separator']);
+export const EDIT_TOOLS = /** @type {ToolId[]} */ (['bucket', 'engrave', 'wood', 'hole', 'eraser', 'revert', 'connector', 'separator']);
 /** Tools shown as a brush circle instead of the system cursor. */
-export const BRUSH_TOOLS = /** @type {ToolId[]} */ (['wood', 'hole', 'revert', 'connector', 'separator']);
+export const BRUSH_TOOLS = /** @type {ToolId[]} */ (['wood', 'hole', 'eraser', 'revert', 'connector', 'separator']);
 
 export const TOOL_NAMES = /** @type {Record<ToolId, string>} */ ({
   hand: 'Hand',
@@ -25,6 +29,7 @@ export const TOOL_NAMES = /** @type {Record<ToolId, string>} */ ({
   engrave: 'Engrave',
   wood: 'Wood brush',
   hole: 'Hole brush',
+  eraser: 'Eraser',
   revert: 'Revert brush',
   connector: 'Connector',
   separator: 'Separator',
@@ -40,6 +45,7 @@ export class ToolController {
    *   onBucket: (region: number, cls: number, x: number, y: number) => void,
    *   onEngrave: (region: number, x: number, y: number) => void,
    *   onEngraveLine: (x: number, y: number) => void,
+   *   onCutToWood: (x: number, y: number) => void,
    *   say: (msg: string) => void,
    * }} o
    */
@@ -48,7 +54,7 @@ export class ToolController {
     /** @type {ToolId} */
     this.tool = 'hand';
     /** Brush diameters in image px (set from the material once the scale is known). */
-    this.size = { wood: 8, hole: 4, revert: 12, connector: 10, separator: 4 };
+    this.size = { wood: 8, hole: 4, eraser: 8, revert: 12, connector: 10, separator: 4 };
     /** The material's sizes, for "Default". */
     this.defaults = { ...this.size };
     /** @type {((tool: ToolId) => void)|null} told when a brush size changes */
@@ -106,6 +112,7 @@ export class ToolController {
     this.size.wood = Math.max(2, p.minWoodWidth * pxPerMm);
     this.size.hole = Math.max(2, p.minHoleWidth * pxPerMm);
     this.size.revert = Math.max(4, this.size.wood * 1.5);
+    this.size.eraser = Math.max(4, this.size.wood * 1.5);
     this.size.connector = Math.max(2, p.minWoodWidth * 1.2 * pxPerMm);
     this.size.separator = Math.max(2, p.minHoleWidth * pxPerMm);
     this.defaults = { ...this.size };
@@ -133,14 +140,14 @@ export class ToolController {
   /** Does the current tool have a size? */
   get sized() {
     const t = this.tool;
-    return t === 'wood' || t === 'hole' || t === 'revert' || t === 'connector' || t === 'separator';
+    return SIZED.includes(t);
   }
 
   /** Set the current brush's diameter (image px, 1…400). @param {number} px */
   setSize(px) {
     const t = this.tool;
-    if (!(t === 'wood' || t === 'hole' || t === 'revert' || t === 'connector' || t === 'separator')) return;
-    this.size[t] = Math.max(1, Math.min(400, px));
+    if (!SIZED.includes(t)) return;
+    this.size[/** @type {SizedTool} */ (t)] = Math.max(1, Math.min(400, px));
     this.refreshOverlay();
     this.onSize?.(t);
   }
@@ -148,10 +155,11 @@ export class ToolController {
   /** `[` / `]`: resize the current brush. Returns a label for feedback, or null. @param {number} dir */
   resize(dir) {
     const t = this.tool;
-    if (!(t === 'wood' || t === 'hole' || t === 'revert' || t === 'connector' || t === 'separator')) return null;
+    if (!SIZED.includes(t)) return null;
+    const st = /** @type {SizedTool} */ (t);
     const k = dir > 0 ? 1.25 : 0.8;
-    this.setSize(this.size[t] * k);
-    const mm = this.pxPerMm ? `${(this.size[t] / this.pxPerMm).toFixed(2)} mm` : `${Math.round(this.size[t])} px`;
+    this.setSize(this.size[st] * k);
+    const mm = this.pxPerMm ? `${(this.size[st] / this.pxPerMm).toFixed(2)} mm` : `${Math.round(this.size[st])} px`;
     return `${TOOL_NAMES[t]} · ${mm}`;
   }
 
@@ -174,9 +182,9 @@ export class ToolController {
       this.engrave(p);
       return true;
     }
-    if (t === 'wood' || t === 'hole' || t === 'revert') {
-      const value = t === 'wood' ? EDIT_WOOD : t === 'hole' ? EDIT_HOLE : EDIT_NONE;
-      const r = this.size[t] / 2;
+    if (t in PAINT) {
+      const value = PAINT[t];
+      const r = this.size[/** @type {SizedTool} */ (t)] / 2;
       doc.beginStroke(TOOL_NAMES[t]);
       this.painting = true;
       // ⇧-click: straight line from the last painted point.
@@ -222,8 +230,8 @@ export class ToolController {
     const doc = this.o.getDoc();
     const t = this.tool;
     if (this.painting && doc && this.last) {
-      const value = t === 'wood' ? EDIT_WOOD : t === 'hole' ? EDIT_HOLE : EDIT_NONE;
-      const size = t === 'wood' || t === 'hole' || t === 'revert' ? this.size[t] : 4;
+      const value = PAINT[t] ?? EDIT_NONE;
+      const size = t in PAINT ? this.size[/** @type {SizedTool} */ (t)] : 4;
       this.o.onPaint(doc.segment(this.last.x, this.last.y, p.x, p.y, size / 2, value));
     }
     this.last = p;
@@ -369,7 +377,12 @@ export class ToolController {
     const y = Math.floor(p.y);
     if (x < 0 || y < 0 || x >= scan.w || y >= scan.h) return;
     const r = scan.labels[y * scan.w + x];
-    if (!r) return this.o.say('That’s a line or a cut — click inside an area.');
+    if (!r) {
+      // Hole paint is a cut you painted: the Bucket can make it wood (it becomes part of the area again).
+      const doc = this.o.getDoc();
+      if (doc && doc.edits[y * scan.w + x] === EDIT_HOLE && !e.altKey) return this.o.onCutToWood(x, y);
+      return this.o.say('That’s a line — click inside an area. To remove a line, use the Eraser (E).');
+    }
     const cur = scan.regionClass[r];
     if (cur === WASTE) return this.o.say('That area is outside the piece.');
     const cls = e.shiftKey ? WOOD : e.altKey ? HOLE : cur === WOOD ? HOLE : WOOD;

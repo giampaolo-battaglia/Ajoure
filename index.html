@@ -22,6 +22,7 @@
         <path d="M3.9 9.4 9 4.3l6 6-5.1 5.1a1.5 1.5 0 0 1-2.1 0L3.9 11.5a1.5 1.5 0 0 1 0-2.1zM4 10.3h11M7.2 2.5l2.2 2.2M16.6 13.4s1.5 1.8 1.5 2.8a1.5 1.5 0 0 1-3 0c0-1 1.5-2.8 1.5-2.8z"/>
       </symbol>
       <symbol id="i-engrave" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.4 2.8c.3 2.3 3.9 3.8 3.9 7.9a4.3 4.3 0 0 1-8.6 0c0-2 1.1-3.3 2.1-4.1.1 1.4.8 2.3 1.7 2.6-.5-2.7-.1-4.6.9-6.4z"/><path d="M4 17.2h12"/></symbol>
+      <symbol id="i-eraser" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11.6 3.9 16.1 8.4c.5.5.5 1.3 0 1.8l-5.9 5.9H6.6l-2.7-2.7c-.5-.5-.5-1.3 0-1.8l5.9-5.9c.5-.5 1.3-.5 1.8 0z"/><path d="m7.2 8.4 4.5 4.5M10.2 16.1h6"/></symbol>
       <symbol id="i-brush" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
         <path d="m14 3 2.4 2.4-6.2 6.2-2.4-2.4zM7.6 10.6c-2 0-3.1 1.2-3.1 2.8 0 1.2-.7 2-1.9 2.5 1 .5 2.2.8 3.3.8 2.2 0 3.6-1.5 3.6-3.5"/>
       </symbol>
@@ -79,11 +80,11 @@
         <span class="doc-name" id="docName">Ajouré</span>
         <span class="edit-dot" id="editDot" title="Unsaved changes" hidden></span>
         <button class="icon-btn tb-icon" id="tbOpen" aria-label="Open" data-tip="Open image or project" data-key="⌘O" data-side="bottom"><svg><use href="#i-open"/></svg></button>
-        <button class="icon-btn tb-icon" id="tbSave" aria-label="Save" data-tip="Save project" data-key="⌘S" data-sub="Image, edits and settings in one .ajoure file" data-side="bottom"><svg><use href="#i-save"/></svg></button>
+        <button class="icon-btn tb-icon" id="tbSave" aria-label="Save" data-tip="Save" data-key="⌘S" data-sub="Back into the same .ajoure file, each save kept as a version · ⇧⌘S or ⌥-click: Save as…" data-side="bottom"><svg><use href="#i-save"/></svg></button>
         <span class="tb-divider" aria-hidden="true"></span>
         <button class="icon-btn tb-icon" id="undoBtn" aria-label="Undo" aria-disabled="true" data-tip="Undo" data-key="⌘Z" data-side="bottom"><svg><use href="#i-undo"/></svg></button>
         <button class="icon-btn tb-icon" id="redoBtn" aria-label="Redo" aria-disabled="true" data-tip="Redo" data-key="⇧⌘Z" data-side="bottom"><svg><use href="#i-redo"/></svg></button>
-        <button class="icon-btn tb-icon" id="historyBtn" aria-label="History" aria-haspopup="dialog" aria-expanded="false" aria-disabled="true" data-tip="History" data-sub="Jump back to any step" data-side="bottom"><svg><use href="#i-history"/></svg></button>
+        <button class="icon-btn tb-icon" id="historyBtn" aria-label="History" aria-haspopup="dialog" aria-expanded="false" aria-disabled="true" data-tip="History" data-sub="Jump back to any step, or to a saved version" data-side="bottom"><svg><use href="#i-history"/></svg></button>
         <span class="tb-divider" aria-hidden="true"></span>
         <button class="chip" id="materialBtn" aria-disabled="true" aria-haspopup="dialog" aria-expanded="false" data-tip="Material" data-sub="Sets the minimum wood and hole widths" data-side="bottom">
           <span id="materialName">3 mm basswood</span> <svg class="caret"><use href="#i-caret"/></svg>
@@ -125,7 +126,8 @@
       <button class="tool" data-tool="bucket" aria-pressed="false" data-tip="Bucket" data-key="B" data-sub="Click an area to swap wood ↔ hole · ⇧ wood · ⌥ hole" data-side="right"><svg><use href="#i-bucket"/></svg></button>
       <button class="tool" data-tool="engrave" aria-pressed="false" data-tip="Engrave" data-key="G" data-sub="Click an area to burn it solid (again to clear) · click a line to switch score ↔ engrave" data-side="right"><svg><use href="#i-engrave"/></svg></button>
       <button class="tool tool-wood" data-tool="wood" aria-pressed="false" data-tip="Wood brush" data-key="W" data-sub="Paint material · [ ] size · ⇧-click for a straight line" data-side="right"><svg><use href="#i-brush"/></svg><i class="swatch"></i></button>
-      <button class="tool tool-hole" data-tool="hole" aria-pressed="false" data-tip="Hole brush" data-key="E" data-sub="Paint a cut · [ ] size · ⇧-click for a straight line" data-side="right"><svg><use href="#i-brush"/></svg><i class="swatch"></i></button>
+      <button class="tool tool-hole" data-tool="hole" aria-pressed="false" data-tip="Hole brush" data-key="K" data-sub="Paint a cut — always cut out · [ ] size · ⇧-click for a straight line" data-side="right"><svg><use href="#i-brush"/></svg><i class="swatch"></i></button>
+      <button class="tool" data-tool="eraser" aria-pressed="false" data-tip="Eraser" data-key="E" data-sub="Remove lines: what you erase becomes part of the area around it · [ ] size" data-side="right"><svg><use href="#i-eraser"/></svg></button>
       <span class="tool-divider" aria-hidden="true"></span>
       <button class="tool" data-tool="connector" aria-pressed="false" data-tip="Connector" data-key="C" data-sub="Click A, then B: a wood bridge · Esc cancels" data-side="right"><svg><use href="#i-connector"/></svg></button>
       <button class="tool" data-tool="separator" aria-pressed="false" data-tip="Separator" data-key="X" data-sub="Drag across a junction to cut it apart" data-side="right"><svg><use href="#i-scissors"/></svg></button>
@@ -324,6 +326,10 @@
   <div class="popover history-pop" id="historyPop" role="dialog" aria-label="History" data-align="left">
     <h2>History</h2>
     <ol class="history-list" id="historyList"></ol>
+    <div class="versions" id="versionsBox" hidden>
+      <h2>Saved versions</h2>
+      <ol class="history-list" id="versionList"></ol>
+    </div>
   </div>
   <div class="popover" id="settingsPop" role="dialog" aria-label="Settings">
     <h2>Settings</h2>

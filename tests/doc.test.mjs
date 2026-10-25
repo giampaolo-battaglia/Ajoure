@@ -2,7 +2,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { EditDoc } from '../src/app/doc.js';
+import { EditDoc, MAX_UNDO } from '../src/app/doc.js';
 import { EDIT_WOOD, EDIT_HOLE } from '../src/engine/analyze.js';
 
 test('a stroke records one undo step and undo/redo restore pixels exactly', () => {
@@ -52,10 +52,35 @@ test('Bucket clicks are undoable and a new edit clears redo', () => {
   assert.equal(d.seeds.length, 0);
 });
 
-test('history keeps at most 100 steps', () => {
+test('history keeps at most MAX_UNDO steps; the dropped ones become the base', () => {
   const d = new EditDoc(30, 30);
-  for (let i = 0; i < 120; i++) d.addSeed({ x: 1, y: 1, cls: 1 }, `s${i}`);
-  assert.equal(d.undoStack.length, 100);
+  for (let i = 0; i < MAX_UNDO + 20; i++) d.addSeed({ x: 1, y: 1, cls: 1 }, `s${i}`);
+  assert.equal(d.undoStack.length, MAX_UNDO);
+  assert.equal(d.baseId, 20);
+  assert.ok(d.hasStep(20) && !d.hasStep(19));
+});
+
+test('settings changes are steps; a slider drag merges into one; undo brings the old settings back', () => {
+  const d = new EditDoc(30, 30);
+  const s0 = { adjust: { brightness: 0 }, widthMm: null, material: 'basswood' };
+  d.settings = s0;
+  d.changeSettings({ ...s0, adjust: { brightness: 10 } }, 'Brightness +10', 'adj:brightness');
+  d.changeSettings({ ...s0, adjust: { brightness: 25 } }, 'Brightness +25', 'adj:brightness');
+  assert.equal(d.undoStack.length, 1);
+  assert.equal(d.undoStack[0].label, 'Brightness +25');
+  d.changeSettings({ ...d.settings, widthMm: 52 }, 'Width 52 mm');
+  assert.equal(d.undoStack.length, 2);
+  d.undo();
+  assert.equal(d.settings.widthMm, null);
+  assert.equal(/** @type {any} */ (d.settings.adjust).brightness, 25);
+  d.undo();
+  assert.equal(/** @type {any} */ (d.settings.adjust).brightness, 0);
+  d.redo();
+  d.redo();
+  assert.equal(d.settings.widthMm, 52);
+  // No change, no step.
+  d.changeSettings({ ...d.settings }, 'nothing');
+  assert.equal(d.undoStack.length, 2);
 });
 
 test('listeners hear about every change with the changed rect', () => {

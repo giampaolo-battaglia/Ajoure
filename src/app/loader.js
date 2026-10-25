@@ -41,7 +41,7 @@ function displayName(name) {
  * Wire up every way an image can arrive.
  * @param {{
  *   app: HTMLElement, fileInput: HTMLInputElement,
- *   onBlob: (blob: Blob, name: string) => void,
+ *   onBlob: (blob: Blob, name: string, handle?: Promise<any>|null) => void,
  * }} opts
  */
 export function bindLoaders({ app, fileInput, onBlob }) {
@@ -69,7 +69,10 @@ export function bindLoaders({ app, fileInput, onBlob }) {
     depth = 0;
     delete app.dataset.dragging;
     const file = e.dataTransfer?.files?.[0];
-    if (file) onBlob(file, file.name);
+    // Chrome can also give the dropped file itself, so Save can write back to a dropped project.
+    const item = /** @type {any} */ (e.dataTransfer?.items?.[0]);
+    const handle = item && typeof item.getAsFileSystemHandle === 'function' ? item.getAsFileSystemHandle().catch(() => null) : null;
+    if (file) onBlob(file, file.name, handle);
   });
 
   // Paste (⌘V) an image or an image file.

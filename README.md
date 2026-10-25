@@ -46,6 +46,10 @@ Prefer round pins? Open **Settings** (top-right button, or ⌘,) and pick **Pin*
 
 **Open** (⌘O) takes an image or a saved project; **Save** (⌘S) writes a `.ajoure` project with the image,
 your edits and settings — open it later to carry on. A dot next to the name means unsaved changes.
+After the first Save, ⌘S saves back into the same file (Chrome), and each save is kept as a version inside it:
+**History** lists every step you took (strokes, clicks, width, material, Adjust) with its time — even after reopening the
+project — and tags where you saved; click any step or saved version to go back to it. **⇧⌘S** (or ⌥-click Save) saves as a new file.
+In Safari each save goes to Downloads (with the versions inside).
 
 ## Fixing
 
@@ -58,7 +62,8 @@ Or fix it by hand:
 | Bucket | B | Click an area to swap wood ↔ hole (⇧ wood, ⌥ hole); hovering shows how far it spills — as a tint, or as flowing water (Settings → Bucket preview) |
 | Engrave | G | In the Plan view: click a shape to burn it solid (outline included), again to clear; click a line on the wood to switch score ↔ engrave |
 | Wood brush | W | Paint material — close a gap, thicken a stroke |
-| Hole brush | E | Paint a cut — separate strokes, open a hole |
+| Hole brush | K | Paint a cut — separate strokes, open a hole (always falls out; the Bucket turns it back into wood) |
+| Eraser | E | Remove lines: what you erase becomes part of the area around it |
 | Revert brush | R | Wipe your edits back to the original |
 | Connector | C | Click A then B: a wood bridge |
 | Separator | X | Drag across a junction to cut it |

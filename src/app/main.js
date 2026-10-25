@@ -13,8 +13,8 @@ import { loadSettings, saveSettings, bindPopover } from './settings.js';
 import { EditDoc, union } from './doc.js';
 import { ToolController, TOOL_NAMES } from './tools.js';
 import { FlowReveal } from './water.js';
-import { encodeProject, decodeProject, saveBlob, isProjectName, PROJECT_EXT } from './project.js';
-import { EDIT_WOOD, EDIT_HOLE, WOOD, HOLE, PX_WOOD, PX_HOLE, PX_LINE, SEED_ENGRAVE, SEED_LINE_SCORE, SEED_LINE_ENGRAVE, MATERIALS, BASSWOOD_3MM, REFERENCE_WIDTH_MM, DETECTION } from '../engine/analyze.js';
+import { encodeProject, decodeProject, saveBlob, isProjectName, writeToHandle, pickFileToOpen, PROJECT_EXT, MAX_VERSIONS } from './project.js';
+import { EDIT_WOOD, EDIT_HOLE, EDIT_PAPER, WOOD, HOLE, PX_WOOD, PX_HOLE, PX_LINE, SEED_ENGRAVE, SEED_LINE_SCORE, SEED_LINE_ENGRAVE, MATERIALS, BASSWOOD_3MM, REFERENCE_WIDTH_MM, DETECTION } from '../engine/analyze.js';
 import { NO_ADJUST, isAdjusted } from '../engine/adjust.js';
 
 /** @typedef {import('./scanner.js').ScanResult} ScanResult */
@@ -53,6 +53,8 @@ let scan = null;
 let doc = null;
 /** @type {HTMLCanvasElement|null} */
 let editLayer = null;
+/** @type {HTMLCanvasElement|null} the eraser's paint */
+let paperLayer = null;
 /** Ignored issue ids (survive re-scans; matched by type + nearby position). */
 const ignored = new Set();
 /**
@@ -71,6 +73,7 @@ const tools = new ToolController({
   onBucket: (region, cls, x, y) => bucketClick(region, cls, x, y),
   onEngrave: (region, x, y) => engraveArea(region, x, y),
   onEngraveLine: (x, y) => engraveLine(x, y),
+  onCutToWood: (x, y) => cutToWood(x, y),
   say: (m) => toast(m, 2200),
 });
 
@@ -165,19 +168,41 @@ function updateDirty() {
   editDot.hidden = !isDirty();
 }
 
-/** Open anything: an image, or an Ajouré project. Asks first if there are unsaved changes. @param {Blob} blob @param {string} name */
-async function open(blob, name) {
+/** The .ajoure file this document lives in (Chrome: Save writes back to it). @type {any} */
+let fileHandle = null;
+/** Every save of this project, oldest first (kept inside the file). @type {import('./project.js').SavedVersion[]} */
+let versions = [];
+
+/**
+ * Open anything: an image, or an Ajouré project. Asks first if there are unsaved changes.
+ * @param {Blob} blob @param {string} name @param {Promise<any>|any} [handle] the file itself, when the browser gives it
+ */
+async function open(blob, name, handle = null) {
   if (!(await confirmDiscard())) return;
   if (isProjectName(name) || blob.type === 'application/json') {
     try {
       const p = await decodeProject(blob);
+      const h = await Promise.resolve(handle).catch(() => null);
       await openImage(p.image, `${p.name}.png`, p);
+      fileHandle = h && h.kind === 'file' ? h : null;
+      versions = p.versions || [];
+      renderVersions();
     } catch (err) {
       toast(err instanceof Error ? err.message : 'That project couldn’t be opened.');
     }
     return;
   }
   await openImage(blob, name, null);
+  fileHandle = null; // an image is never overwritten: the first Save asks where the project goes
+  versions = [];
+  renderVersions();
+}
+
+/** Open dialog: keeps hold of the file in Chrome (so Save writes back to it), plain picker elsewhere. */
+async function openDialog() {
+  const r = await pickFileToOpen();
+  if (r === 'unsupported') return fileInput.click();
+  if (r) open(r.file, r.file.name, r.handle);
 }
 
 /**
@@ -203,7 +228,10 @@ async function openImage(blob, name, restore) {
     editLayer = document.createElement('canvas');
     editLayer.width = img.width;
     editLayer.height = img.height;
-    view.setEditLayer(editLayer);
+    paperLayer = document.createElement('canvas');
+    paperLayer.width = img.width;
+    paperLayer.height = img.height;
+    view.setEditLayer(editLayer, paperLayer);
     ignored.clear();
     imageBlob = blob;
     scanOpts.adjust = { ...NO_ADJUST };
@@ -222,8 +250,16 @@ async function openImage(blob, name, restore) {
         renderMaterials();
       }
       for (const id of restore.ignored) ignored.add(id);
+      // The step history saved with the project: go back in time as if you'd never closed it.
+      if (restore.history) {
+        doc.undoStack = restore.history.undo;
+        doc.redoStack = restore.history.redo;
+        doc.baseId = restore.history.baseId;
+        doc.nextId = restore.history.nextId;
+      }
       updateEditLayer([0, 0, img.width, img.height]);
     }
+    doc.settings = currentSettings();
     changeSeq = savedSeq = 0;
     updateDirty();
     syncAdjustUi();
@@ -243,7 +279,7 @@ async function openImage(blob, name, restore) {
 
 bindLoaders({ app, fileInput, onBlob: open });
 
-$('openBtn').addEventListener('click', () => fileInput.click());
+$('openBtn').addEventListener('click', () => openDialog());
 $('sampleBtn').addEventListener('click', async () => {
   try {
     await open(await fetchSample(), 'Julie mon Amour.png');
@@ -263,8 +299,11 @@ const modeWood = $('modeWood');
 const modePlan = $('modePlan');
 const planLegend = $('planLegend');
 
+/** The last finished check's summary (a saved version is labelled with it). */
+let lastResultText = '';
 /** @param {'idle'|'scanning'|'issues'|'warn'|'clean'|'error'} state @param {string} text */
 function setStatus(state, text) {
+  if (state !== 'scanning' && state !== 'idle' && state !== 'error') lastResultText = text;
   scanStatus.dataset.state = state;
   scanStatus.innerHTML = state === 'idle' ? '' : `<span class="dot"></span>`;
   const t = document.createElement('span');
@@ -517,7 +556,7 @@ const TRAY_TOOLS = /** @type {Record<string, ToolId[]>} */ ({
   opening: ['wood', 'connector', 'bucket'],
 });
 const TOOL_ICON = /** @type {Record<string, string>} */ ({
-  wood: 'i-brush', hole: 'i-brush', connector: 'i-connector', separator: 'i-scissors', bucket: 'i-bucket', engrave: 'i-engrave', revert: 'i-revert',
+  wood: 'i-brush', hole: 'i-brush', eraser: 'i-eraser', connector: 'i-connector', separator: 'i-scissors', bucket: 'i-bucket', engrave: 'i-engrave', revert: 'i-revert',
 });
 
 /** @param {Issue} issue */
@@ -536,7 +575,7 @@ function renderTray(issue) {
     b.className = `tool${t === 'wood' ? ' tool-wood' : t === 'hole' ? ' tool-hole' : ''}`;
     b.setAttribute('aria-pressed', String(input.tool === t));
     b.dataset.tip = TOOL_NAMES[t];
-    b.dataset.key = { wood: 'W', hole: 'E', connector: 'C', separator: 'X', bucket: 'B', engrave: 'G', revert: 'R', hand: 'H', zoom: 'Z' }[t];
+    b.dataset.key = { wood: 'W', hole: 'K', eraser: 'E', connector: 'C', separator: 'X', bucket: 'B', engrave: 'G', revert: 'R', hand: 'H', zoom: 'Z' }[t];
     b.dataset.side = 'top';
     b.innerHTML = `<svg><use href="#${TOOL_ICON[t]}"/></svg>${t === 'wood' || t === 'hole' ? '<i class="swatch"></i>' : ''}`;
     b.addEventListener('click', () => {
@@ -680,22 +719,28 @@ $('ftClose').addEventListener('click', () => closeTray());
 
 const PAINT_WOOD = [44, 44, 46, 255];
 const PAINT_HOLE = [95, 95, 100, 255];
+const PAINT_PAPER = [255, 255, 255, 255];
 
 /** Redraw part of the edits layer from the document (null = nothing to redraw). @param {Rect|null} rect */
 function updateEditLayer(rect) {
-  if (!rect || !doc || !editLayer) return;
+  if (!rect || !doc || !editLayer || !paperLayer) return;
   const [x, y, w, h] = rect;
   const ctx = /** @type {CanvasRenderingContext2D} */ (editLayer.getContext('2d'));
+  const pctx = /** @type {CanvasRenderingContext2D} */ (paperLayer.getContext('2d'));
   const img = ctx.createImageData(w, h);
+  const pimg = pctx.createImageData(w, h);
   const d = img.data;
+  const pd = pimg.data;
   for (let yy = 0; yy < h; yy++) {
     for (let xx = 0; xx < w; xx++) {
       const e = doc.edits[(y + yy) * doc.w + x + xx];
       if (!e) continue;
-      d.set(e === EDIT_WOOD ? PAINT_WOOD : PAINT_HOLE, (yy * w + xx) * 4);
+      if (e === EDIT_PAPER) pd.set(PAINT_PAPER, (yy * w + xx) * 4);
+      else d.set(e === EDIT_WOOD ? PAINT_WOOD : PAINT_HOLE, (yy * w + xx) * 4);
     }
   }
   ctx.putImageData(img, x, y);
+  pctx.putImageData(pimg, x, y);
   view.requestRender();
 }
 
@@ -705,7 +750,43 @@ function onDocChange(rect) {
   clearFlow();
   updateEditLayer(rect);
   updateUndoUi();
-  requestRecheck();
+  // A settings step (or undoing one): the scan runs with the document's settings.
+  if (doc && settingsKey(doc.settings) !== settingsKey(currentSettings())) {
+    applySettings(doc.settings);
+    requestRecheck(true);
+  } else requestRecheck();
+}
+
+/** The settings the next scan uses, as the document stores them. @returns {import('./doc.js').DocSettings} */
+function currentSettings() {
+  return { adjust: { ...scanOpts.adjust }, widthMm: scanOpts.widthMm, material: scanOpts.profile.name };
+}
+/** @param {import('./doc.js').DocSettings} st */
+const settingsKey = (st) => JSON.stringify([{ ...NO_ADJUST, ...st.adjust }, st.widthMm, st.material]);
+/** Put settings into effect (controls follow). @param {import('./doc.js').DocSettings} st */
+function applySettings(st) {
+  scanOpts.adjust = { ...NO_ADJUST, ...st.adjust };
+  scanOpts.widthMm = st.widthMm;
+  const m = MATERIALS.find((x) => x.name === st.material);
+  if (m && m !== scanOpts.profile) {
+    scanOpts.profile = m;
+    $('materialName').textContent = m.name;
+    renderMaterials();
+  }
+  syncAdjustUi();
+}
+/**
+ * Change adjustments / width / material as a step in the history (undoable, saved, timed).
+ * @param {Partial<import('./doc.js').DocSettings>} partial @param {string} label @param {string} [key] merge a slider drag into one step
+ */
+function changeSettings(partial, label, key) {
+  const next = { ...currentSettings(), ...partial };
+  if (!doc) {
+    applySettings(next);
+    requestRecheck(true);
+    return;
+  }
+  doc.changeSettings(next, label, key);
 }
 
 /** @type {Worker|null} the idle helper thread (water, Flow test, Bucket pieces) */
@@ -771,6 +852,41 @@ async function bucketClick(region, cls, x, y) {
 }
 
 /**
+ * Bucket on hole paint (a cut you painted, e.g. to remove a line): that stroke becomes paper again,
+ * part of the area around it, and that area becomes wood — one undo step.
+ * @param {number} x @param {number} y
+ */
+function cutToWood(x, y) {
+  if (!doc) return;
+  const { w, h, edits } = doc;
+  const start = y * w + x;
+  if (edits[start] !== EDIT_HOLE) return;
+  /** @type {number[]} */
+  const px = [start];
+  const seen = new Uint8Array(w * h);
+  seen[start] = 1;
+  for (let i = 0; i < px.length; i++) {
+    const p = px[i];
+    const cx = p % w, cy = (p - cx) / w;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const xx = cx + dx, yy = cy + dy;
+        if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+        const q = yy * w + xx;
+        if (!seen[q] && edits[q] === EDIT_HOLE) {
+          seen[q] = 1;
+          px.push(q);
+        }
+      }
+    }
+  }
+  doc.beginStroke('Bucket: wood');
+  updateEditLayer(doc.setPixels(px, EDIT_PAPER));
+  doc.endStroke({ x, y, cls: WOOD });
+  toast('That was hole paint: it’s paper again, and the area around it is now wood (⌘Z to undo)', 3200);
+}
+
+/**
  * Engrave tool on an area: burn its whole surface (a hole becomes engraved wood); on an engraved
  * area, clear it back to plain wood. Same narrow-join handling as the Bucket.
  * @param {number} region @param {number} x @param {number} y
@@ -803,7 +919,7 @@ const undoBtn = $('undoBtn');
 const redoBtn = $('redoBtn');
 const editDot = $('editDot');
 function updateUndoUi() {
-  historyBtn.setAttribute('aria-disabled', String(!doc || (!doc.canUndo && !doc.canRedo)));
+  historyBtn.setAttribute('aria-disabled', String(!doc || (!doc.canUndo && !doc.canRedo && !versions.length)));
   renderHistory();
   undoBtn.setAttribute('aria-disabled', String(!doc?.canUndo));
   redoBtn.setAttribute('aria-disabled', String(!doc?.canRedo));
@@ -833,9 +949,13 @@ function renderHistory() {
     historyList.replaceChildren();
     return;
   }
-  const steps = ['Opened image', ...doc.undoStack.map((p) => p.label), ...[...doc.redoStack].reverse().map((p) => p.label)];
-  const cur = doc.undoStack.length;
-  historyList.replaceChildren(...steps.map((label, i) => {
+  const d = doc;
+  const patches = [...d.undoStack, ...[...d.redoStack].reverse()];
+  const cur = d.undoStack.length;
+  /** step id → when it was saved */
+  const saved = new Map(versions.filter((v) => v.stepId != null).map((v) => [v.stepId, v.savedAt]));
+  const rows = [{ label: d.baseId ? 'Earlier steps' : 'Opened image', id: d.baseId, at: 0 }, ...patches.map((p) => ({ label: p.label, id: p.id ?? -1, at: p.at || 0 }))];
+  historyList.replaceChildren(...rows.map((row, i) => {
     const li = document.createElement('li');
     li.dataset.current = String(i === cur);
     li.dataset.future = String(i > cur);
@@ -843,12 +963,39 @@ function renderHistory() {
     const n = document.createElement('span');
     n.className = 'h-step';
     n.textContent = i ? String(i) : '';
+    const label = document.createElement('span');
+    label.className = 'h-label';
+    label.textContent = row.label;
     b.append(n, label);
+    const when = saved.get(row.id);
+    if (when) {
+      const tag = document.createElement('span');
+      tag.className = 'h-saved';
+      tag.textContent = 'Saved';
+      tag.title = `Saved ${fmtWhen(when)}`;
+      b.append(tag);
+    }
+    if (row.at) {
+      const t = document.createElement('span');
+      t.className = 'h-time';
+      t.textContent = fmtWhen(new Date(row.at).toISOString());
+      b.append(t);
+    }
     b.addEventListener('click', () => jumpTo(i));
     li.append(b);
     return li;
   }));
+  renderVersionList();
   historyList.querySelector('[data-current="true"]')?.scrollIntoView({ block: 'nearest' });
+}
+/** Go to the state right after a step (by id). @param {number} id */
+function jumpToStep(id) {
+  if (!doc) return;
+  if (id === doc.baseId) return jumpTo(0);
+  const u = doc.undoStack.findIndex((p) => p.id === id);
+  if (u >= 0) return jumpTo(u + 1);
+  const r = doc.redoStack.findIndex((p) => p.id === id);
+  if (r >= 0) jumpTo(doc.undoStack.length + (doc.redoStack.length - r));
 }
 /** @param {number} i number of steps to keep applied */
 function jumpTo(i) {
@@ -882,6 +1029,7 @@ function refreshNavigator() {
   c.height = base.height;
   const g = /** @type {CanvasRenderingContext2D} */ (c.getContext('2d'));
   g.drawImage(base, 0, 0);
+  if (paperLayer) g.drawImage(paperLayer, 0, 0);
   g.drawImage(editLayer, 0, 0);
   navPanel.setImage(c);
 }
@@ -987,34 +1135,26 @@ function fmtWidth(mm) {
 for (const row of adjRows) {
   const key = /** @type {keyof import('../engine/adjust.js').Adjustments} */ (row.dataset.adj);
   const input = /** @type {HTMLInputElement} */ (row.querySelector('input'));
+  const name = row.querySelector('label')?.textContent || key;
   input.addEventListener('input', () => {
     const v = Number(input.value);
-    /** @type {any} */ (scanOpts.adjust)[key] = v;
-    syncAdjustUi();
-    requestRecheck(true);
+    const fmt = key === 'threshold' ? String(v) : ADJ_FMT[key](v);
+    changeSettings({ adjust: { ...scanOpts.adjust, [key]: v } }, `${name} ${fmt}`, `adj:${key}`);
   });
   // Double-click a label: back to the default for that one.
   row.querySelector('label')?.addEventListener('dblclick', () => {
-    /** @type {any} */ (scanOpts.adjust)[key] = NO_ADJUST[key];
-    syncAdjustUi();
-    requestRecheck(true);
+    changeSettings({ adjust: { ...scanOpts.adjust, [key]: NO_ADJUST[key] } }, `${name}: default`);
   });
 }
 adjInvert.addEventListener('change', () => {
-  scanOpts.adjust.invert = adjInvert.checked ? 'on' : 'off';
-  syncAdjustUi();
-  requestRecheck(true);
+  changeSettings({ adjust: { ...scanOpts.adjust, invert: adjInvert.checked ? 'on' : 'off' } }, adjInvert.checked ? 'Invert on' : 'Invert off');
 });
 $('adjAuto').addEventListener('click', () => {
-  scanOpts.adjust = { ...NO_ADJUST, despeckle: 4 };
-  syncAdjustUi();
-  requestRecheck(true);
+  changeSettings({ adjust: { ...NO_ADJUST, despeckle: 4 } }, 'Auto adjust');
   toast('Auto: automatic threshold and a light clean-up', 1600);
 });
 $('adjReset').addEventListener('click', () => {
-  scanOpts.adjust = { ...NO_ADJUST };
-  syncAdjustUi();
-  requestRecheck(true);
+  changeSettings({ adjust: { ...NO_ADJUST } }, 'Reset adjustments');
 });
 
 // Hold \ to compare with the original.
@@ -1038,13 +1178,15 @@ function renderMaterials() {
     /** @type {HTMLElement} */ (b.firstChild).textContent = m.name;
     /** @type {HTMLElement} */ (b.lastChild).textContent = `Wood ≥ ${m.minWoodWidth} mm · holes ≥ ${m.minHoleWidth} mm · kerf ${m.kerfMm} mm`;
     b.addEventListener('click', () => {
-      scanOpts.profile = m;
       settings.material = m.name;
       saveSettings(settings);
-      renderMaterials();
-      $('materialName').textContent = m.name;
       materialPop.close();
-      requestRecheck(true);
+      if (m === scanOpts.profile) return;
+      changeSettings({ material: m.name }, `Material: ${m.name}`);
+      if (!doc) {
+        renderMaterials();
+        $('materialName').textContent = m.name;
+      }
     });
     return b;
   }));
@@ -1065,14 +1207,13 @@ $('widthForm').addEventListener('submit', (e) => {
     toast('Enter a width between 5 and 2000 mm', 1800);
     return;
   }
-  scanOpts.widthMm = Math.round(v * 10) / 10;
+  const mm = Math.round(v * 10) / 10;
   widthPop.close();
-  requestRecheck(true);
+  changeSettings({ widthMm: mm }, `Width ${fmtWidth(mm)} mm`);
 });
 $('widthReset').addEventListener('click', () => {
-  scanOpts.widthMm = null;
   widthPop.close();
-  requestRecheck(true);
+  changeSettings({ widthMm: null }, 'Width: estimate');
 });
 $('widthReset').textContent = `Use the estimate (${REFERENCE_WIDTH_MM} mm)`;
 
@@ -1126,24 +1267,123 @@ toVal.addEventListener('blur', () => syncToolOpts());
 
 // ---- open & save ---------------------------------------------------------------------------
 
-/** Save everything as an .ajoure project. @returns {Promise<boolean>} saved */
-async function saveProject() {
+/**
+ * Save the project. Like a document: the first Save asks where; after that ⌘S writes back to the
+ * same file (Chrome), and every save is kept as a version inside it. Save as… always asks.
+ * Safari can't write back to a file: each save goes to Downloads (still with every version inside).
+ * @param {boolean} [as] Save as… (a new file)
+ * @returns {Promise<boolean>} saved
+ */
+async function saveProject(as = false) {
   if (!doc || !imageBlob || !view.image) {
     toast('Open an image first', 1400);
     return false;
   }
   const name = docName.textContent || 'Untitled';
+  const d = doc;
+  // A save is a marker on the current step (old saves whose steps were replaced are dropped).
+  /** @type {import('./project.js').SavedVersion} */
+  const version = { savedAt: new Date().toISOString(), label: versionLabel(), stepId: d.stepId };
+  const kept = versions.filter((v) => v.snapshot || (v.stepId != null && d.hasStep(v.stepId)));
+  const last = kept[kept.length - 1];
+  if (last && last.stepId === version.stepId) kept.pop(); // saved again with no change: just the newer time
+  const list = [...kept, version].slice(-MAX_VERSIONS);
   const blob = await encodeProject({
-    name, image: imageBlob, w: doc.w, h: doc.h, edits: doc.edits, seeds: doc.seeds,
+    name, image: imageBlob, w: d.w, h: d.h, edits: d.edits, seeds: d.seeds,
     adjust: scanOpts.adjust, widthMm: scanOpts.widthMm, material: scanOpts.profile.name, ignored: [...ignored],
+    versions: list,
+    history: { undo: d.undoStack, redo: d.redoStack, baseId: d.baseId, nextId: d.nextId },
   });
   const at = changeSeq;
-  const r = await saveBlob(blob, `${name}${PROJECT_EXT}`);
+  /** @type {'inplace'|'saved'|'downloaded'|'cancelled'} */
+  let r = 'cancelled';
+  if (!as && fileHandle && (await writeToHandle(fileHandle, blob))) r = 'inplace';
+  else r = await saveBlob(blob, `${name}${PROJECT_EXT}`, undefined, (h) => (fileHandle = h));
   if (r === 'cancelled') return false;
+  versions = list;
+  renderVersions();
   savedSeq = at;
   updateDirty();
-  toast(r === 'saved' ? `Saved “${name}”` : `Saved to Downloads as “${name}${PROJECT_EXT}”`, 2200);
+  const file = fileHandle?.name || `${name}${PROJECT_EXT}`;
+  const n = list.length;
+  toast(
+    r === 'downloaded'
+      ? `Saved to Downloads as “${file}” (version ${n} inside)`
+      : `Saved “${file}”${n > 1 ? ` · version ${n}` : ''}`,
+    2200,
+  );
   return true;
+}
+
+/** A few words for a saved version: what the scan said then. */
+function versionLabel() {
+  return lastResultText.trim().replace(/\s*\(est\.\)$/, '') || 'Saved';
+}
+
+/** @param {string} iso */
+function fmtWhen(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const today = new Date();
+  const time = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  if (d.toDateString() === today.toDateString()) return time;
+  return `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${time}`;
+}
+/** Saved versions changed (a save, an open): list them and refresh the History button. */
+function renderVersions() {
+  renderVersionList();
+  updateUndoUi();
+}
+/** Saved versions in the History popover, newest first; click one to go back to it. */
+function renderVersionList() {
+  const versionsBox = $('versionsBox');
+  const versionList = $('versionList');
+  const list = versions.filter((v) => v.snapshot || (v.stepId != null && doc?.hasStep(v.stepId)));
+  versionsBox.hidden = !list.length;
+  versionList.replaceChildren(...list.map((v, i) => {
+    const li = document.createElement('li');
+    li.dataset.latest = String(i === list.length - 1);
+    li.dataset.current = String(v.stepId != null && v.stepId === doc?.stepId);
+    const b = document.createElement('button');
+    const when = document.createElement('span');
+    when.className = 'v-when';
+    when.textContent = fmtWhen(v.savedAt);
+    const label = document.createElement('span');
+    label.className = 'v-label';
+    label.textContent = v.label;
+    b.append(when, label);
+    b.title = `${v.label} — click to go back to this version`;
+    b.addEventListener('click', () => restoreVersion(v));
+    li.append(b);
+    return li;
+  }).reverse());
+}
+
+/**
+ * Go back to a saved version: the drawing, Bucket/Engrave clicks, adjustments, width and material.
+ * Unsaved work is offered a save first; saving afterwards adds a new version (nothing is lost).
+ * @param {import('./project.js').SavedVersion} v
+ */
+async function restoreVersion(v) {
+  if (!doc || !imageBlob) return;
+  if (v.stepId != null) {
+    // A step in the history: just go there (undoable, nothing lost).
+    if (!doc.hasStep(v.stepId)) return toast('That version was replaced by later edits.', 2200);
+    jumpToStep(v.stepId);
+    toast(`Back to the version saved ${fmtWhen(v.savedAt)}`, 1800);
+    return;
+  }
+  const sn = /** @type {NonNullable<typeof v.snapshot>} */ (v.snapshot);
+  historyPop.close();
+  if (!(await confirmDiscard())) return;
+  const name = docName.textContent || 'Untitled';
+  const latest = v === versions[versions.length - 1];
+  await openImage(imageBlob, `${name}.png`, {
+    name, image: imageBlob, w: doc.w, h: doc.h,
+    edits: sn.edits, seeds: sn.seeds, adjust: sn.adjust, widthMm: sn.widthMm, material: sn.material, ignored: sn.ignored,
+  });
+  if (!latest) markChanged();
+  toast(latest ? 'Back to the saved file' : `Back to the version from ${fmtWhen(v.savedAt)} · Save to keep it`, 2600);
 }
 
 const sheet = $('sheet');
@@ -1186,8 +1426,8 @@ function confirmDiscard() {
   });
 }
 
-$('tbOpen').addEventListener('click', () => fileInput.click());
-$('tbSave').addEventListener('click', () => saveProject());
+$('tbOpen').addEventListener('click', () => openDialog());
+$('tbSave').addEventListener('click', (e) => saveProject(e.altKey));
 window.addEventListener('beforeunload', (e) => {
   if (isDirty()) {
     e.preventDefault();
@@ -1493,8 +1733,8 @@ window.addEventListener('keydown', (e) => {
   if ((e.metaKey || e.ctrlKey) && !e.altKey && (e.key.toLowerCase() === 's' || e.key.toLowerCase() === 'o')) {
     e.preventDefault();
     t.blur?.();
-    if (e.key.toLowerCase() === 's') saveProject();
-    else fileInput.click();
+    if (e.key.toLowerCase() === 's') saveProject(e.shiftKey);
+    else openDialog();
     return;
   }
   if (t.tagName === 'INPUT' && /** @type {HTMLInputElement} */ (t).type !== 'range' && /** @type {HTMLInputElement} */ (t).type !== 'checkbox') return;
@@ -1502,10 +1742,10 @@ window.addEventListener('keydown', (e) => {
   const k = e.key.toLowerCase();
   if (mod && k === 'o') {
     e.preventDefault();
-    fileInput.click();
+    openDialog();
   } else if (mod && k === 's') {
     e.preventDefault();
-    saveProject();
+    saveProject(e.shiftKey);
   } else if (mod && k === 'z') {
     e.preventDefault();
     if (e.shiftKey) redo();
