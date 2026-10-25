@@ -3,6 +3,7 @@
 // only the latest edit state is queued (intermediate ones are skipped).
 
 /** @typedef {Omit<ReturnType<typeof import('../engine/analyze.js').analyzeEdited>, 'debug'|'autoMap'>} ScanResult */
+/** @typedef {import('../engine/analyze.js').ScanOptions} ScanOptions */
 /** @typedef {import('../engine/analyze.js').Seed} Seed */
 
 export class Scanner {
@@ -11,7 +12,7 @@ export class Scanner {
     this.seq = 0;
     this.doc = 0; // bumps on every open; results for an older image are dropped
     this.busy = false;
-    /** @type {null | {edits: Uint8Array, seeds: Seed[], resolve: (r: ScanResult|null) => void, reject: (e: Error) => void}} */
+    /** @type {null | {edits: Uint8Array, seeds: Seed[], opts?: ScanOptions, resolve: (r: ScanResult|null) => void, reject: (e: Error) => void}} */
     this.queued = null;
     /** @type {Map<number, {doc: number, resolve: (r: ScanResult|null) => void, reject: (e: Error) => void}>} */
     this.pending = new Map();
@@ -52,14 +53,18 @@ export class Scanner {
   }
 
   /**
-   * Re-check the current image with edits. Resolves null if superseded by a newer request.
-   * @param {Uint8Array} edits @param {Seed[]} seeds
+   * Re-check the current image with edits (and, optionally, new adjustments / width / material).
+   * Resolves null if superseded by a newer request.
+   * @param {Uint8Array} edits @param {Seed[]} seeds @param {ScanOptions} [opts]
    * @returns {Promise<ScanResult|null>}
    */
-  update(edits, seeds) {
+  update(edits, seeds, opts) {
     return new Promise((resolve, reject) => {
+      // A superseded request's new options still count: carry them into the newer one.
+      const carried = this.queued?.opts;
       if (this.queued) this.queued.resolve(null);
-      this.queued = { edits: Uint8Array.from(edits), seeds: seeds.map((s) => ({ ...s })), resolve, reject };
+      const merged = carried || opts ? { ...carried, ...opts } : undefined;
+      this.queued = { edits: Uint8Array.from(edits), seeds: seeds.map((s) => ({ ...s })), opts: merged, resolve, reject };
       this.flush();
     });
   }
@@ -68,7 +73,7 @@ export class Scanner {
     if (this.busy || !this.queued) return;
     const q = this.queued;
     this.queued = null;
-    this.send({ kind: 'update', edits: q.edits, seeds: q.seeds }, [q.edits.buffer], this.doc).then(q.resolve, q.reject);
+    this.send({ kind: 'update', edits: q.edits, seeds: q.seeds, opts: q.opts }, [q.edits.buffer], this.doc).then(q.resolve, q.reject);
   }
 
   /** @param {object} msg @param {Transferable[]} transfer @param {number} doc @returns {Promise<ScanResult|null>} */

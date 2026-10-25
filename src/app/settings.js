@@ -3,13 +3,16 @@
 
 const KEY = 'ajoure.settings';
 
-/** @typedef {{markers: 'box'|'pin', showIgnored: boolean, bucketPreview: 'tint'|'water'}} Settings */
+/** @typedef {{markers: 'box'|'pin', showIgnored: boolean, bucketPreview: 'tint'|'water', flowMode: 'flow'|'quick', material: string, exportDetails: 'score'|'engrave'|'drop'}} Settings */
 
 /** @type {Settings} */
 export const DEFAULTS = Object.freeze({
   markers: /** @type {'box'|'pin'} */ ('box'),
   showIgnored: true,
   bucketPreview: /** @type {'tint'|'water'} */ ('tint'),
+  flowMode: /** @type {'flow'|'quick'} */ ('flow'),
+  material: '3 mm basswood',
+  exportDetails: /** @type {'score'|'engrave'|'drop'} */ ('score'),
 });
 
 /** @returns {Settings} */
@@ -21,6 +24,8 @@ export function loadSettings() {
     if (s.markers !== 'box' && s.markers !== 'pin') s.markers = DEFAULTS.markers;
     s.showIgnored = s.showIgnored !== false;
     if (s.bucketPreview !== 'tint' && s.bucketPreview !== 'water') s.bucketPreview = DEFAULTS.bucketPreview;
+    if (s.flowMode !== 'flow' && s.flowMode !== 'quick') s.flowMode = DEFAULTS.flowMode;
+    if (!['score', 'engrave', 'drop'].includes(s.exportDetails)) s.exportDetails = DEFAULTS.exportDetails;
     return s;
   } catch {
     return { ...DEFAULTS };
@@ -44,7 +49,8 @@ export function bindPopover(button, pop) {
   const place = () => {
     const r = button.getBoundingClientRect();
     pop.style.top = `${Math.round(r.bottom + 8)}px`;
-    pop.style.right = `${Math.round(window.innerWidth - r.right)}px`;
+    if (pop.dataset.align === 'left') pop.style.left = `${Math.round(Math.max(8, r.left - 8))}px`;
+    else pop.style.right = `${Math.round(window.innerWidth - r.right)}px`;
   };
   const open = () => {
     place();
@@ -52,10 +58,14 @@ export function bindPopover(button, pop) {
     button.setAttribute('aria-expanded', 'true');
   };
   const close = () => {
+    if (pop.contains(document.activeElement)) /** @type {HTMLElement} */ (document.activeElement).blur();
     delete pop.dataset.open;
     button.setAttribute('aria-expanded', 'false');
   };
-  button.addEventListener('click', () => (pop.dataset.open ? close() : open()));
+  button.addEventListener('click', () => {
+    if (button.getAttribute('aria-disabled') === 'true') return;
+    pop.dataset.open ? close() : open();
+  });
   document.addEventListener('pointerdown', (e) => {
     const t = /** @type {Node} */ (e.target);
     if (pop.dataset.open && !pop.contains(t) && !button.contains(t)) close();

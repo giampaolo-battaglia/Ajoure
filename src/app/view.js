@@ -17,7 +17,16 @@ const DOT_GAP = 5; // spacing of the dots on a box outline, CSS px
 /** @typedef {'box'|'pin'} MarkerStyle */
 
 /** @typedef {import('../engine/analyze.js').Issue} Issue */
-/** @typedef {'design'|'woodhole'} ViewMode */
+/** @typedef {'design'|'woodhole'|'plan'|'cut'} ViewMode */
+/** @typedef {'stays'|'removed'|'cut'|'score'|'engrave'} PlanLayer */
+
+/** Plan view colours (the legend's swatches use the same). */
+export const PLAN_COLORS = Object.freeze({
+  wood: '#ecd9b6',
+  cut: '#e5332a',
+  score: '#2563eb',
+  engrave: '#5a3214',
+});
 
 export class CanvasView {
   /** @param {HTMLCanvasElement} canvas @param {HTMLElement} host */
@@ -58,8 +67,33 @@ export class CanvasView {
      * @type {{canvas: HTMLCanvasElement, x: number, y: number, tick?: (now: number) => boolean, ripple?: {x: number, y: number, t0: number}}|null}
      */
     this.hover = null;
-    /** @type {null | {kind:'brush', x:number, y:number, r:number, color:string} | {kind:'line', ax:number, ay:number, bx:number, by:number, r:number, color:string}} */
+    /** @type {null | {kind:'brush', x:number, y:number, r:number, color:string} | {kind:'line', ax:number, ay:number, bx:number, by:number, r:number, color:string} | {kind:'curve', ax:number, ay:number, cx:number, cy:number, bx:number, by:number, r:number, color:string}} */
     this.toolOverlay = null;
+    /**
+     * Flow test overlay: the water, where it escapes (gap flashes) and the holes that held (checks).
+     * @type {null | {reveal: import('./water.js').FlowReveal, quick: boolean, gaps: {x:number, y:number, t:number}[], held: {x:number, y:number, area:number}[], tEnd: number}}
+     */
+    this.flow = null;
+    /**
+     * Cut preview geometry (image px): the wood outlines (fill even-odd), score lines, engraving.
+     * @type {null | {wood: Path2D, outline: Path2D|null, scores: Path2D|null, engrave: Path2D|null, engraveAreas: Path2D|null, kerfPx: number}}
+     */
+    this.cutPreview = null;
+    /** @type {PlanLayer|null} Plan view: the legend item being looked at (the rest is dimmed) */
+    this.planFocus = null;
+    /** @type {CanvasPattern|null} */
+    this.hatch = null;
+    this.hatchDpr = 0;
+    /** @type {CanvasRenderingContext2D|null} for hit-testing the plan paths */
+    this.hitCtx = null;
+    /** @type {CanvasPattern|null} */
+    this.grain = null;
+    /** @type {HTMLCanvasElement|null} adjusted trace for Design view */
+    this.adjusted = null;
+    /** holding \\ to compare with the original */
+    this.showOriginal = false;
+    /** @type {{x:number, y:number}|null} the last connector's midpoint handle (drag to curve) */
+    this.connHandle = null;
     /** @type {{issue: Issue, t0: number}[]} resolved markers fading out */
     this.ghosts = [];
     /** @type {{x:number, y:number, issues: Issue[]}[]} pin clusters on screen (CSS px), for hit-testing */
@@ -93,6 +127,8 @@ export class CanvasView {
     this.focusId = null;
     if (this.woodHole) this.woodHole.close();
     this.woodHole = null;
+    this.adjusted = null;
+    this.flow = null;
     this.v = fitView({ ...this.v, iw: bitmap.width, ih: bitmap.height });
     this.emit();
   }
@@ -114,21 +150,44 @@ export class CanvasView {
     this.emit();
   }
 
+  /** What Design view draws: the adjusted black & white trace when adjustments are on, else the image. */
+  designSource() {
+    if (this.showOriginal) return this.image;
+    return this.adjusted || this.image;
+  }
+
+  /** @param {HTMLCanvasElement|null} c the adjusted trace (null = no adjustments) */
+  setAdjusted(c) {
+    this.adjusted = c;
+    this.requestRender();
+  }
+
+  /** Hold-to-compare (\\): show the original image, whatever the view. @param {boolean} on */
+  setShowOriginal(on) {
+    if (this.showOriginal === on) return;
+    this.showOriginal = on;
+    this.requestRender();
+  }
+
   // ---- analysis overlay ------------------------------------------------------
 
   /**
    * Show a scan: pins now, the wood/hole picture as soon as it's built.
-   * @param {{w:number, h:number, classMap: Uint8Array, issues: Issue[]}} res
+   * @param {{w:number, h:number, classMap: Uint8Array, issues: Issue[], labels?: Int32Array, regionEngraved?: Uint8Array}} res
    */
   async setAnalysis(res) {
     this.issues = res.issues;
     this.emit();
-    const { w, h, classMap } = res;
+    const { w, h, classMap, labels, regionEngraved } = res;
     const data = new ImageData(w, h);
     const px = new Uint32Array(data.data.buffer);
     // Little-endian ABGR: wood white, lines near-black, holes grey, waste transparent.
     const COLORS = [0x00000000, 0xffffffff, 0xff645f5f, 0xff2e2c2c];
     for (let i = 0; i < classMap.length; i++) px[i] = COLORS[classMap[i]];
+    // Engraved areas: still wood, tinted the colour of a burn.
+    if (labels && regionEngraved && regionEngraved.some((v) => v)) {
+      for (let i = 0; i < classMap.length; i++) if (classMap[i] === 1 && regionEngraved[labels[i]]) px[i] = 0xff6a9ac4;
+    }
     const bmp = await createImageBitmap(data);
     if (this.woodHole) this.woodHole.close();
     this.woodHole = bmp;
@@ -339,6 +398,17 @@ export class CanvasView {
     const ox = v.tx * dpr;
     const oy = v.ty * dpr;
 
+    if (this.mode === 'cut' && !this.showOriginal) {
+      this.drawCut(s, ox, oy);
+      this.drawToolOverlay();
+      return;
+    }
+    if (this.mode === 'plan' && !this.showOriginal && this.cutPreview) {
+      this.drawPlan(s, ox, oy);
+      this.drawHover(ox, oy, s);
+      return;
+    }
+
     // Soft page shadow under the image (clipped to the view to keep numbers small).
     const pad = 40 * dpr;
     const x0 = Math.max(-pad, ox);
@@ -357,7 +427,7 @@ export class CanvasView {
 
     const r = visibleImageRect(v);
     if (!r) return;
-    const showWood = this.mode === 'woodhole' && this.woodHole;
+    const showWood = this.mode === 'woodhole' && this.woodHole && !this.showOriginal;
     if (showWood && x1 > x0 && y1 > y0) {
       // Waste shows as a quiet checkerboard (screen-space, so it doesn't swim when zooming).
       ctx.fillStyle = this.checkerPattern();
@@ -365,22 +435,302 @@ export class CanvasView {
     }
     ctx.imageSmoothingEnabled = v.scale < 1;
     ctx.imageSmoothingQuality = 'high';
-    const src = showWood ? /** @type {ImageBitmap} */ (this.woodHole) : image;
+    const src = showWood ? /** @type {ImageBitmap} */ (this.woodHole) : /** @type {ImageBitmap|HTMLCanvasElement} */ (this.designSource());
     ctx.drawImage(src, r.x, r.y, r.w, r.h, ox + r.x * s, oy + r.y * s, r.w * s, r.h * s);
     // The user's paint shows at once, before the re-check comes back.
-    if (this.editLayer) ctx.drawImage(this.editLayer, r.x, r.y, r.w, r.h, ox + r.x * s, oy + r.y * s, r.w * s, r.h * s);
-    if (this.hover) {
-      const hv = this.hover;
-      const now = performance.now();
-      if (hv.tick && hv.tick(now)) this.requestRender();
-      ctx.drawImage(hv.canvas, ox + hv.x * s, oy + hv.y * s, hv.canvas.width * s, hv.canvas.height * s);
-      if (hv.ripple) this.drawRipple(hv.ripple, now);
-    }
+    if (this.editLayer && !this.showOriginal) ctx.drawImage(this.editLayer, r.x, r.y, r.w, r.h, ox + r.x * s, oy + r.y * s, r.w * s, r.h * s);
+    if (this.flow) this.drawFlow(ox, oy, s);
+    this.drawHover(ox, oy, s);
 
     if (v.scale >= GRID_FROM) this.drawGrid(r, s, ox, oy);
     this.drawPins();
     this.drawGhosts();
     this.drawToolOverlay();
+  }
+
+  /** Bucket / Engrave hover preview. @param {number} ox @param {number} oy @param {number} s */
+  drawHover(ox, oy, s) {
+    if (!this.hover) return;
+    const hv = this.hover;
+    const now = performance.now();
+    if (hv.tick && hv.tick(now)) this.requestRender();
+    this.ctx.drawImage(hv.canvas, ox + hv.x * s, oy + hv.y * s, hv.canvas.width * s, hv.canvas.height * s);
+    if (hv.ripple) this.drawRipple(hv.ripple, now);
+  }
+
+  /** @param {{wood: string, outline?: string, scores: string, engrave: string, engraveAreas?: string}|null} d path data (image px) @param {number} kerfPx */
+  setCutPreview(d, kerfPx) {
+    this.cutPreview = d ? {
+      wood: new Path2D(d.wood),
+      outline: d.outline ? new Path2D(d.outline) : null,
+      scores: d.scores ? new Path2D(d.scores) : null,
+      engrave: d.engrave ? new Path2D(d.engrave) : null,
+      engraveAreas: d.engraveAreas ? new Path2D(d.engraveAreas) : null,
+      kerfPx,
+    } : null;
+    this.requestRender();
+  }
+
+  /** @param {PlanLayer|null} layer */
+  setPlanFocus(layer) {
+    this.planFocus = layer;
+    this.requestRender();
+  }
+
+  /** Diagonal hatching over a light checker: "this falls away" (screen space). */
+  hatchPattern() {
+    if (this.hatch && this.hatchDpr === this.dpr) return this.hatch;
+    const d = this.dpr;
+    const size = Math.round(12 * d);
+    const c = document.createElement('canvas');
+    c.width = c.height = size;
+    const g = /** @type {CanvasRenderingContext2D} */ (c.getContext('2d'));
+    g.fillStyle = this.colors.checkerA;
+    g.fillRect(0, 0, size, size);
+    g.strokeStyle = this.colors.checkerB;
+    g.lineWidth = 2 * d;
+    g.beginPath();
+    for (const o of [-size, 0, size]) {
+      g.moveTo(o, size);
+      g.lineTo(o + size, 0);
+    }
+    g.stroke();
+    this.hatch = /** @type {CanvasPattern} */ (this.ctx.createPattern(c, 'repeat'));
+    this.hatchDpr = d;
+    return this.hatch;
+  }
+
+  /**
+   * The plan: what stays (wood), what falls out (hatched), and what the laser does —
+   * cut (red), score (blue), engrave (dark brown fill). Lines keep a constant on-screen width.
+   * @param {number} s @param {number} ox @param {number} oy
+   */
+  drawPlan(s, ox, oy) {
+    const { ctx, dpr, v } = this;
+    const cp = /** @type {NonNullable<CanvasView['cutPreview']>} */ (this.cutPreview);
+    const f = this.planFocus;
+    const dim = (/** @type {PlanLayer} */ k) => (f && f !== k ? 0.22 : 1);
+    // Everything that isn't wood falls away: hatch the image area (holes show it through the wood).
+    const x0 = Math.max(0, ox), y0 = Math.max(0, oy);
+    const x1 = Math.min(this.canvas.width, ox + v.iw * s), y1 = Math.min(this.canvas.height, oy + v.ih * s);
+    ctx.save();
+    ctx.globalAlpha = f === 'removed' ? 1 : f ? 0.5 : 1;
+    ctx.fillStyle = this.hatchPattern();
+    if (x1 > x0 && y1 > y0) ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+    ctx.restore();
+    ctx.save();
+    ctx.setTransform(s, 0, 0, s, ox, oy);
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    const px = dpr / s; // one CSS px in image units
+    // Wood, lifted a little.
+    ctx.save();
+    ctx.globalAlpha = f === 'removed' ? 0.35 : dim('stays') < 1 ? 0.55 : 1;
+    ctx.shadowColor = 'rgba(40, 24, 8, 0.28)';
+    ctx.shadowBlur = 10 * dpr;
+    ctx.shadowOffsetY = 3 * dpr;
+    ctx.fillStyle = PLAN_COLORS.wood;
+    ctx.fill(cp.wood, 'evenodd');
+    ctx.restore();
+    // Engraving: whole shapes and bold lines.
+    ctx.save();
+    ctx.globalAlpha = dim('engrave');
+    ctx.fillStyle = PLAN_COLORS.engrave;
+    if (cp.engraveAreas) ctx.fill(cp.engraveAreas, 'evenodd');
+    if (cp.engrave) ctx.fill(cp.engrave, 'evenodd');
+    ctx.restore();
+    // Score lines.
+    if (cp.scores) {
+      ctx.save();
+      ctx.globalAlpha = dim('score');
+      ctx.lineWidth = (f === 'score' ? 2.5 : 1.6) * px;
+      ctx.strokeStyle = PLAN_COLORS.score;
+      ctx.stroke(cp.scores);
+      ctx.restore();
+    }
+    // Cut lines on top.
+    ctx.save();
+    ctx.globalAlpha = dim('cut');
+    ctx.lineWidth = (f === 'cut' ? 2.5 : 1.6) * px;
+    ctx.strokeStyle = PLAN_COLORS.cut;
+    ctx.stroke(cp.wood);
+    ctx.restore();
+    ctx.restore();
+  }
+
+  /**
+   * What the plan shows at an image point: a cut, score or engraved line, an engraved area,
+   * wood that stays, or something that falls out. Lines are picked within a few screen px.
+   * @param {number} x @param {number} y image px
+   * @returns {null | 'cut'|'score'|'engraveLine'|'engraveArea'|'stays'|'removed'|'outside'}
+   */
+  planHit(x, y) {
+    const cp = this.cutPreview;
+    if (!cp) return null;
+    if (!this.hitCtx) this.hitCtx = /** @type {CanvasRenderingContext2D} */ (document.createElement('canvas').getContext('2d'));
+    const g = this.hitCtx;
+    const tol = Math.max(1.5, 5 / this.v.scale); // 5 CSS px
+    g.lineWidth = tol * 2;
+    g.lineCap = g.lineJoin = 'round';
+    if (cp.engrave && g.isPointInPath(cp.engrave, x, y, 'evenodd')) return 'engraveLine';
+    if (cp.scores && g.isPointInStroke(cp.scores, x, y)) return 'score';
+    if (g.isPointInStroke(cp.wood, x, y)) return 'cut';
+    if (cp.engraveAreas && g.isPointInPath(cp.engraveAreas, x, y, 'evenodd')) return 'engraveArea';
+    if (g.isPointInPath(cp.wood, x, y, 'evenodd')) return 'stays';
+    if (x < 0 || y < 0 || x >= this.v.iw || y >= this.v.ih) return null;
+    return cp.outline && g.isPointInPath(cp.outline, x, y, 'evenodd') ? 'removed' : 'outside';
+  }
+
+  /** A soft basswood grain, in image px (so it zooms with the wood). */
+  woodGrain() {
+    if (this.grain) return this.grain;
+    const c = document.createElement('canvas');
+    c.width = 256;
+    c.height = 512;
+    const g = /** @type {CanvasRenderingContext2D} */ (c.getContext('2d'));
+    g.fillStyle = '#ecd9b6';
+    g.fillRect(0, 0, c.width, c.height);
+    for (let i = 0; i < 70; i++) {
+      const x = Math.random() * c.width;
+      const wv = 0.6 + Math.random() * 2.2;
+      g.strokeStyle = `rgba(${150 + Math.random() * 40}, ${105 + Math.random() * 30}, 60, ${0.05 + Math.random() * 0.08})`;
+      g.lineWidth = wv;
+      g.beginPath();
+      for (let y = 0; y <= c.height; y += 16) {
+        const xx = x + Math.sin(y / (60 + i) + i) * 6 + Math.sin(y / 23 + i * 3) * 1.5;
+        if (y === 0) g.moveTo(xx, y);
+        else g.lineTo(xx, y);
+      }
+      g.stroke();
+    }
+    this.grain = /** @type {CanvasPattern} */ (this.ctx.createPattern(c, 'repeat'));
+    return this.grain;
+  }
+
+  /**
+   * The piece as it comes out of the laser: basswood, see-through holes, burnt edges, scores.
+   * @param {number} s @param {number} ox @param {number} oy
+   */
+  drawCut(s, ox, oy) {
+    const { ctx, dpr } = this;
+    const cp = this.cutPreview;
+    if (!cp) return;
+    ctx.save();
+    ctx.setTransform(s, 0, 0, s, ox, oy);
+    // The piece, lifted off the table a little.
+    ctx.shadowColor = 'rgba(40, 24, 8, 0.34)';
+    ctx.shadowBlur = 14 * dpr;
+    ctx.shadowOffsetY = 5 * dpr;
+    ctx.fillStyle = this.woodGrain();
+    ctx.fill(cp.wood, 'evenodd');
+    ctx.shadowColor = 'transparent';
+    // Burnt edges: a dark kerf line with a soft scorch just inside.
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+    ctx.save();
+    ctx.clip(cp.wood, 'evenodd');
+    ctx.lineWidth = cp.kerfPx * 5;
+    ctx.strokeStyle = 'rgba(120, 66, 24, 0.16)';
+    ctx.stroke(cp.wood);
+    ctx.lineWidth = cp.kerfPx * 2.2;
+    ctx.strokeStyle = 'rgba(92, 50, 18, 0.45)';
+    ctx.stroke(cp.wood);
+    ctx.restore();
+    ctx.lineWidth = Math.max(cp.kerfPx, 0.6 / s * dpr);
+    ctx.strokeStyle = 'rgba(58, 30, 10, 0.9)';
+    ctx.stroke(cp.wood);
+    if (cp.engrave || cp.engraveAreas) {
+      ctx.fillStyle = 'rgba(70, 36, 12, 0.82)';
+      if (cp.engraveAreas) ctx.fill(cp.engraveAreas, 'evenodd');
+      if (cp.engrave) ctx.fill(cp.engrave, 'evenodd');
+    }
+    if (cp.scores) {
+      ctx.lineWidth = Math.max(cp.kerfPx * 0.9, 0.5 / s * dpr);
+      ctx.strokeStyle = 'rgba(78, 40, 14, 0.85)';
+      ctx.stroke(cp.scores);
+    }
+    ctx.restore();
+  }
+
+  /** @param {number} ox @param {number} oy @param {number} s */
+  drawFlow(ox, oy, s) {
+    const fl = /** @type {NonNullable<CanvasView['flow']>} */ (this.flow);
+    const { ctx, dpr, v } = this;
+    const now = performance.now();
+    const r = fl.reveal;
+    let alive = r.tick(now);
+    const u = r.progress(now);
+    if (!alive && !fl.tEnd) fl.tEnd = now;
+    ctx.save();
+    // Quick mode: a 150 ms fade.
+    if (fl.quick) {
+      const a = Math.min(1, (now - r.t0) / 150);
+      ctx.globalAlpha = a;
+      if (a < 1) alive = true;
+    }
+    ctx.imageSmoothingEnabled = v.scale < 1;
+    ctx.drawImage(r.canvas, ox, oy, r.w * s, r.h * s);
+    ctx.restore();
+    // Gaps flash and ripple (amber) as the water reaches them.
+    for (const g of fl.gaps) {
+      const since = fl.quick ? now - r.t0 : now - (r.t0 + r.timeOf(g.t));
+      if (since < 0) { alive = true; continue; }
+      const cx = (g.x * v.scale + v.tx) * dpr;
+      const cy = (g.y * v.scale + v.ty) * dpr;
+      ctx.save();
+      // A soft glow that stays while the result shows.
+      const glow = ctx.createRadialGradient(cx, cy, 0, cx, cy, 16 * dpr);
+      const k = since < 400 ? 1 - since / 800 : Math.max(0.55, 0.5 + 0.12 * Math.cos(((since - 400) / 600) * Math.PI));
+      glow.addColorStop(0, `rgba(255, 190, 80, ${0.95 * k})`);
+      glow.addColorStop(1, 'rgba(255, 150, 30, 0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 16 * dpr, 0, Math.PI * 2);
+      ctx.fill();
+      for (let i = 0; i < 3; i++) {
+        const q = (since - i * 180) / 1000;
+        if (q < 0 || q >= 1) continue;
+        const e = 1 - (1 - q) ** 3;
+        ctx.beginPath();
+        ctx.arc(cx, cy, (6 + 34 * e) * dpr, 0, Math.PI * 2);
+        ctx.lineWidth = (2.4 - 1.6 * q) * dpr;
+        ctx.strokeStyle = `rgba(240, 140, 20, ${0.9 * (1 - q)})`;
+        ctx.stroke();
+      }
+      ctx.restore();
+      if (since < 1400) alive = true; // ripples and a short glow pulse, then it holds still
+    }
+    // Holes that held: a tiny check, briefly, once everything has settled.
+    if (fl.tEnd) {
+      const since = now - fl.tEnd;
+      if (since < 1800) {
+        alive = true;
+        const a = since < 250 ? since / 250 : since > 1300 ? Math.max(0, (1800 - since) / 500) : 1;
+        ctx.save();
+        ctx.globalAlpha = a;
+        for (const hd of fl.held) {
+          if (hd.area * v.scale * v.scale < 900) continue; // too small on screen to label
+          const cx = (hd.x * v.scale + v.tx) * dpr;
+          const cy = (hd.y * v.scale + v.ty) * dpr;
+          ctx.beginPath();
+          ctx.arc(cx, cy, 7 * dpr, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(255,255,255,0.92)';
+          ctx.fill();
+          ctx.beginPath();
+          ctx.moveTo(cx - 3.2 * dpr, cy + 0.2 * dpr);
+          ctx.lineTo(cx - 0.8 * dpr, cy + 2.6 * dpr);
+          ctx.lineTo(cx + 3.4 * dpr, cy - 2.4 * dpr);
+          ctx.lineWidth = 1.6 * dpr;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          ctx.strokeStyle = '#2b6fe0';
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+    }
+    void u;
+    if (alive) this.requestRender();
   }
 
   /** Rings spreading from where the water was poured. @param {{x:number, y:number, t0:number}} rp @param {number} now */
@@ -409,12 +759,36 @@ export class CanvasView {
 
   drawToolOverlay() {
     const o = this.toolOverlay;
-    if (!o) return;
     const { ctx, dpr, v } = this;
     const sx = (/** @type {number} */ x) => (x * v.scale + v.tx) * dpr;
     const sy = (/** @type {number} */ y) => (y * v.scale + v.ty) * dpr;
+    if (this.connHandle) {
+      const h = this.connHandle;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(sx(h.x), sy(h.y), 5.5 * dpr, 0, Math.PI * 2);
+      ctx.fillStyle = '#fff';
+      ctx.shadowColor = 'rgba(0,0,0,0.25)';
+      ctx.shadowBlur = 3 * dpr;
+      ctx.fill();
+      ctx.shadowColor = 'transparent';
+      ctx.lineWidth = 2 * dpr;
+      ctx.strokeStyle = this.colors.accent;
+      ctx.stroke();
+      ctx.restore();
+    }
+    if (!o) return;
     ctx.save();
-    if (o.kind === 'brush') {
+    if (o.kind === 'curve') {
+      ctx.lineCap = 'round';
+      ctx.globalAlpha = 0.75;
+      ctx.lineWidth = Math.max(2 * dpr, 2 * o.r * v.scale * dpr);
+      ctx.strokeStyle = o.color;
+      ctx.beginPath();
+      ctx.moveTo(sx(o.ax), sy(o.ay));
+      ctx.quadraticCurveTo(sx(o.cx), sy(o.cy), sx(o.bx), sy(o.by));
+      ctx.stroke();
+    } else if (o.kind === 'brush') {
       const r = Math.max(1.5 * dpr, o.r * v.scale * dpr);
       ctx.beginPath();
       ctx.arc(sx(o.x), sy(o.y), r, 0, Math.PI * 2);
@@ -681,6 +1055,7 @@ function readColors() {
     warning: get('--warning', '#f5a524'),
     info: get('--info', '#3e8cf0'),
     ok: get('--ok', '#2f9e6b'),
+    accent: get('--accent', '#14857a'),
     ignored: get('--ignored', '#9a9aa0'),
     checkerA: get('--checker-a', '#e9e9ec'),
     checkerB: get('--checker-b', '#dedee2'),

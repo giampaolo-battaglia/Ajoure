@@ -257,3 +257,92 @@ export class Pour {
     if (this.settled >= count) this.finished = true;
   }
 }
+
+export const FLOW_COLORS = Object.freeze({
+  calm: [64, 140, 255, 112],
+  calmEdge: [22, 98, 232, 220],
+  escaped: [245, 158, 40, 150], // warm amber: what the leak would take with it
+  escapedEdge: [214, 110, 0, 230],
+});
+
+/**
+ * Flow test reveal: an image-sized canvas the water fills over `dur` ms, every hole in parallel.
+ * Fed by the worker's flowTest() result (pixels already in time order).
+ */
+export class FlowReveal {
+  /**
+   * @param {import('../engine/flow.js').FlowResult} f
+   * @param {number} w @param {number} h
+   * @param {number} dur ms (0 = all at once)
+   */
+  constructor(f, w, h, dur) {
+    this.f = f;
+    this.w = w;
+    this.h = h;
+    this.canvas = document.createElement('canvas');
+    this.canvas.width = w;
+    this.canvas.height = h;
+    this.g = /** @type {CanvasRenderingContext2D} */ (this.canvas.getContext('2d'));
+    this.img = this.g.createImageData(w, h);
+    this.dur = dur;
+    this.t0 = performance.now();
+    this.reached = 0;
+    this.settled = 0;
+    this.band = 2200; // front width, in time units (of 65535)
+    this.finished = false;
+    if (!dur) this.paintTo(Infinity);
+  }
+
+  /** When (ms after the start) the front reaches flow time `k` (0…1). @param {number} k */
+  timeOf(k) {
+    if (!this.dur) return 0;
+    const v = Math.acos(Math.max(-1, Math.min(1, 1 - 2 * k))) / Math.PI;
+    return Math.pow(v, 1 / 0.85) * this.dur;
+  }
+
+  /** Progress 0…1 at `now`. @param {number} now */
+  progress(now) {
+    return this.dur ? Math.min(1, (now - this.t0) / this.dur) : 1;
+  }
+
+  /** @param {number} now @returns {boolean} still flowing */
+  tick(now) {
+    if (this.finished) return false;
+    const u = this.progress(now);
+    // Gentle start (the pour), steady middle, soft settle.
+    const e = u < 1 ? 0.5 - 0.5 * Math.cos(Math.PI * Math.pow(u, 0.85)) : 1;
+    this.paintTo(u >= 1 ? Infinity : e * (65535 + this.band));
+    return !this.finished;
+  }
+
+  /** Jump to the end. */
+  finish() {
+    this.paintTo(Infinity);
+  }
+
+  /** @param {number} front */
+  paintTo(front) {
+    const { order, time, kind, count } = this.f;
+    const d = this.img.data;
+    const w = this.w;
+    let minY = this.h, maxY = -1;
+    /** @param {number} i @param {boolean} edge */
+    const paint = (i, edge) => {
+      const p = order[i];
+      const c = kind[i] === 2 ? (edge ? FLOW_COLORS.escapedEdge : FLOW_COLORS.escaped) : edge ? FLOW_COLORS.calmEdge : FLOW_COLORS.calm;
+      const k = p * 4;
+      d[k] = c[0];
+      d[k + 1] = c[1];
+      d[k + 2] = c[2];
+      d[k + 3] = c[3];
+      const y = (p / w) | 0;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    };
+    while (this.reached < count && time[this.reached] <= front) paint(this.reached++, true);
+    const calm = front === Infinity ? Infinity : front - this.band;
+    while (this.settled < this.reached && time[this.settled] <= calm) paint(this.settled++, false);
+    if (maxY >= 0) this.g.putImageData(this.img, 0, 0, 0, minY, w, maxY - minY + 1);
+    if (this.settled >= count) this.finished = true;
+  }
+}

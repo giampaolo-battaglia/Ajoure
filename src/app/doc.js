@@ -137,16 +137,28 @@ export class EditDoc {
   }
 
   /** Finish the stroke and record it for undo. Returns false if nothing changed. */
-  endStroke() {
+  /**
+   * Finish the stroke as one undo step. With `seed`, a Bucket click is part of the same step
+   * (the smart Bucket seals narrow passages and fills in one go).
+   * @param {Seed} [seed]
+   */
+  endStroke(seed) {
     const s = this.stroke;
     this.stroke = null;
-    if (!s || s.x1 < 0) return false;
+    if (!s) return false;
+    if (s.x1 < 0) {
+      if (!seed) return false;
+      this.addSeed(seed, s.label);
+      return true;
+    }
     /** @type {Rect} */
     const rect = [s.x0, s.y0, s.x1 - s.x0 + 1, s.y1 - s.y0 + 1];
     const before = crop(s.before, this.w, rect);
     const after = crop(this.edits, this.w, rect);
-    if (equal(before, after)) return false;
-    this.push({ label: s.label, rect, before, after, seedsBefore: this.seeds.slice(), seedsAfter: this.seeds.slice() });
+    if (equal(before, after) && !seed) return false;
+    const seedsBefore = this.seeds.slice();
+    if (seed) this.seeds = [...this.seeds, seed];
+    this.push({ label: s.label, rect, before, after, seedsBefore, seedsAfter: this.seeds.slice() });
     this.emit(rect, s.label);
     return true;
   }
@@ -176,6 +188,7 @@ export class EditDoc {
     if (!p) return null;
     this.apply(p, false);
     this.redoStack.push(p);
+    this.emit(p.rect, p.label); // after the stacks are settled, so listeners see the final state
     return p.label;
   }
 
@@ -185,6 +198,7 @@ export class EditDoc {
     if (!p) return null;
     this.apply(p, true);
     this.undoStack.push(p);
+    this.emit(p.rect, p.label);
     return p.label;
   }
 
@@ -193,7 +207,6 @@ export class EditDoc {
     if (p.rect) paste(this.edits, this.w, p.rect, /** @type {Uint8Array} */ (forward ? p.after : p.before));
     this.seeds = (forward ? p.seedsAfter : p.seedsBefore).slice();
     this.lastPoint = null;
-    this.emit(p.rect, p.label);
   }
 
   /** Any edits at all? (for the "original" indicator) */

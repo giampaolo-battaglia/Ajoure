@@ -21,6 +21,7 @@
       <symbol id="i-bucket" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
         <path d="M3.9 9.4 9 4.3l6 6-5.1 5.1a1.5 1.5 0 0 1-2.1 0L3.9 11.5a1.5 1.5 0 0 1 0-2.1zM4 10.3h11M7.2 2.5l2.2 2.2M16.6 13.4s1.5 1.8 1.5 2.8a1.5 1.5 0 0 1-3 0c0-1 1.5-2.8 1.5-2.8z"/>
       </symbol>
+      <symbol id="i-engrave" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.4 2.8c.3 2.3 3.9 3.8 3.9 7.9a4.3 4.3 0 0 1-8.6 0c0-2 1.1-3.3 2.1-4.1.1 1.4.8 2.3 1.7 2.6-.5-2.7-.1-4.6.9-6.4z"/><path d="M4 17.2h12"/></symbol>
       <symbol id="i-brush" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
         <path d="m14 3 2.4 2.4-6.2 6.2-2.4-2.4zM7.6 10.6c-2 0-3.1 1.2-3.1 2.8 0 1.2-.7 2-1.9 2.5 1 .5 2.2.8 3.3.8 2.2 0 3.6-1.5 3.6-3.5"/>
       </symbol>
@@ -60,6 +61,9 @@
       <symbol id="i-redo" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
         <path d="M12.5 5 16 8.5 12.5 12M15.5 8.5h-7a4.5 4.5 0 0 0 0 9H11"/>
       </symbol>
+      <symbol id="i-history" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.6 10a6.4 6.4 0 1 0 1.9-4.5"/><path d="M3.3 3.6v2.6h2.6"/><path d="M10 6.6V10l2.3 1.5"/></symbol>
+      <symbol id="i-open" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2.8 15.5V5.2c0-.6.5-1.1 1.1-1.1h3.4l1.6 1.8h6.2c.6 0 1.1.5 1.1 1.1v1.4"/><path d="M2.8 15.5 5 9.2c.2-.5.6-.8 1.1-.8h10.4c.8 0 1.3.8 1 1.5l-2 5.1c-.2.4-.6.7-1 .7H3.6"/></symbol>
+      <symbol id="i-save" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5v8.2M6.8 8.6 10 11.8l3.2-3.2"/><path d="M3.5 12.5v2.4c0 .9.7 1.6 1.6 1.6h9.8c.9 0 1.6-.7 1.6-1.6v-2.4"/></symbol>
       <symbol id="i-close" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3.5 3.5l5 5M8.5 3.5l-5 5"/></symbol>
       <symbol id="i-left" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 3 4.5 6l3 3"/></symbol>
       <symbol id="i-minus" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 6h6"/></symbol>
@@ -73,15 +77,19 @@
       <div class="tb-group tb-left">
         <svg class="mark" aria-hidden="true"><use href="#i-mark"/></svg>
         <span class="doc-name" id="docName">Ajouré</span>
-        <span class="edit-dot" id="editDot" title="Edited" hidden></span>
+        <span class="edit-dot" id="editDot" title="Unsaved changes" hidden></span>
+        <button class="icon-btn tb-icon" id="tbOpen" aria-label="Open" data-tip="Open image or project" data-key="⌘O" data-side="bottom"><svg><use href="#i-open"/></svg></button>
+        <button class="icon-btn tb-icon" id="tbSave" aria-label="Save" data-tip="Save project" data-key="⌘S" data-sub="Image, edits and settings in one .ajoure file" data-side="bottom"><svg><use href="#i-save"/></svg></button>
+        <span class="tb-divider" aria-hidden="true"></span>
         <button class="icon-btn tb-icon" id="undoBtn" aria-label="Undo" aria-disabled="true" data-tip="Undo" data-key="⌘Z" data-side="bottom"><svg><use href="#i-undo"/></svg></button>
         <button class="icon-btn tb-icon" id="redoBtn" aria-label="Redo" aria-disabled="true" data-tip="Redo" data-key="⇧⌘Z" data-side="bottom"><svg><use href="#i-redo"/></svg></button>
+        <button class="icon-btn tb-icon" id="historyBtn" aria-label="History" aria-haspopup="dialog" aria-expanded="false" aria-disabled="true" data-tip="History" data-sub="Jump back to any step" data-side="bottom"><svg><use href="#i-history"/></svg></button>
         <span class="tb-divider" aria-hidden="true"></span>
-        <button class="chip" aria-disabled="true" data-tip="Material" data-sub="Coming in a later build" data-side="bottom">
-          3 mm basswood <svg class="caret"><use href="#i-caret"/></svg>
+        <button class="chip" id="materialBtn" aria-disabled="true" aria-haspopup="dialog" aria-expanded="false" data-tip="Material" data-sub="Sets the minimum wood and hole widths" data-side="bottom">
+          <span id="materialName">3 mm basswood</span> <svg class="caret"><use href="#i-caret"/></svg>
         </button>
-        <button class="chip" aria-disabled="true" data-tip="Piece width" data-sub="Coming in a later build" data-side="bottom">
-          Width 50 mm <span class="badge">est</span>
+        <button class="chip" id="widthBtn" aria-disabled="true" aria-haspopup="dialog" aria-expanded="false" data-tip="Piece width" data-sub="Enter the real width for exact mm checks" data-side="bottom">
+          Width <span id="widthText">50 mm</span> <span class="badge" id="widthEst">est</span>
         </button>
       </div>
 
@@ -89,16 +97,20 @@
         <div class="segmented" role="radiogroup" aria-label="View">
           <button role="radio" id="modeDesign" data-mode="design" aria-checked="true" data-tip="Design view" data-sub="Your image as it is" data-side="bottom">Design</button>
           <button role="radio" id="modeWood" data-mode="woodhole" aria-checked="false" aria-disabled="true" data-tip="Wood / hole view" data-sub="White stays, grey is cut out — available after a scan" data-side="bottom">Wood/Hole</button>
-          <button role="radio" aria-checked="false" aria-disabled="true" data-tip="Cut preview" data-sub="Coming in a later build" data-side="bottom">Cut</button>
+          <button role="radio" id="modePlan" data-mode="plan" aria-checked="false" aria-disabled="true" data-tip="Plan view" data-sub="What stays, what falls out, and what the laser cuts, scores or engraves — available after a scan" data-side="bottom">Plan</button>
+          <button role="radio" id="modeCut" data-mode="cut" aria-checked="false" aria-disabled="true" data-tip="Cut preview" data-sub="The piece as it comes out of the laser — available after a scan" data-side="bottom">Cut</button>
         </div>
       </div>
 
       <div class="tb-group tb-right">
         <div class="scan-status" id="scanStatus" data-state="idle" aria-live="polite"></div>
-        <button class="btn" aria-disabled="true" data-tip="Flow test" data-key="T" data-sub="Coming in a later build" data-side="bottom">
-          <svg><use href="#i-drop"/></svg> Flow test
-        </button>
-        <button class="btn btn-primary" aria-disabled="true" data-tip="Export SVG" data-key="⇧⌘E" data-sub="Coming in a later build" data-side="bottom">
+        <div class="split" id="flowSplit">
+          <button class="btn split-main" id="flowBtn" aria-disabled="true" aria-pressed="false" data-tip="Flow test" data-key="T" data-sub="Pour water into every hole and see where it escapes" data-side="bottom">
+            <svg><use href="#i-drop"/></svg> Flow test
+          </button>
+          <button class="btn split-caret" id="flowModeBtn" aria-label="Flow test mode" aria-haspopup="dialog" aria-expanded="false" data-tip="Quick or animated" data-side="bottom"><svg class="caret"><use href="#i-caret"/></svg></button>
+        </div>
+        <button class="btn btn-primary" id="exportBtn" aria-disabled="true" data-tip="Export SVG" data-key="⇧⌘E" data-sub="The cut file for xTool Creative Space, at real size" data-side="bottom">
           <svg><use href="#i-export"/></svg> Export SVG
         </button>
         <button class="icon-btn tb-icon" id="settingsBtn" aria-label="Settings" aria-haspopup="dialog" aria-expanded="false" data-tip="Settings" data-key="⌘," data-side="bottom">
@@ -111,6 +123,7 @@
     <nav class="toolbar" aria-label="Tools">
       <button class="tool" data-tool="hand" aria-pressed="true" data-tip="Hand" data-key="H" data-side="right"><svg><use href="#i-hand"/></svg></button>
       <button class="tool" data-tool="bucket" aria-pressed="false" data-tip="Bucket" data-key="B" data-sub="Click an area to swap wood ↔ hole · ⇧ wood · ⌥ hole" data-side="right"><svg><use href="#i-bucket"/></svg></button>
+      <button class="tool" data-tool="engrave" aria-pressed="false" data-tip="Engrave" data-key="G" data-sub="Click an area to burn it solid (again to clear) · click a line to switch score ↔ engrave" data-side="right"><svg><use href="#i-engrave"/></svg></button>
       <button class="tool tool-wood" data-tool="wood" aria-pressed="false" data-tip="Wood brush" data-key="W" data-sub="Paint material · [ ] size · ⇧-click for a straight line" data-side="right"><svg><use href="#i-brush"/></svg><i class="swatch"></i></button>
       <button class="tool tool-hole" data-tool="hole" aria-pressed="false" data-tip="Hole brush" data-key="E" data-sub="Paint a cut · [ ] size · ⇧-click for a straight line" data-side="right"><svg><use href="#i-brush"/></svg><i class="swatch"></i></button>
       <span class="tool-divider" aria-hidden="true"></span>
@@ -140,6 +153,35 @@
 
       <div class="drop-overlay" aria-hidden="true"><span>Drop to open</span></div>
       <div class="zoom-pill" id="zoomPill" aria-live="polite"></div>
+      <div class="tool-opts" id="toolOpts" data-open="false" role="toolbar" aria-label="Brush size">
+        <span class="to-name" id="toName">Wood brush</span>
+        <span class="to-sep" aria-hidden="true"></span>
+        <span class="to-label">Size</span>
+        <button class="icon-btn to-btn" id="toMinus" aria-label="Smaller" data-tip="Smaller" data-key="[" data-side="bottom"><svg><use href="#i-minus"/></svg></button>
+        <input type="range" id="toSize" min="0" max="1000" step="1" value="500" aria-label="Brush size" />
+        <button class="icon-btn to-btn" id="toPlus" aria-label="Bigger" data-tip="Bigger" data-key="]" data-side="bottom"><svg><use href="#i-plus"/></svg></button>
+        <input type="text" class="to-val" id="toVal" inputmode="decimal" spellcheck="false" aria-label="Brush size in mm" />
+        <span class="to-unit">mm</span>
+        <button class="btn btn-small btn-quiet to-reset" id="toReset" data-tip="Back to the material's size" data-side="bottom">Default</button>
+      </div>
+      <div class="plan-legend" id="planLegend" data-open="false" role="toolbar" aria-label="Plan legend">
+        <span class="pl-label">Wood</span>
+        <button class="pl-item" data-layer="stays" aria-pressed="false" data-tip="Stays" data-sub="The wood you keep · click to pick it out" data-side="bottom"><i class="sw sw-wood"></i>Stays</button>
+        <button class="pl-item" data-layer="removed" aria-pressed="false" data-tip="Falls out" data-sub="Holes and everything outside the outline · click to pick them out" data-side="bottom"><i class="sw sw-removed"></i>Falls out</button>
+        <span class="pl-sep" aria-hidden="true"></span>
+        <span class="pl-label">Laser</span>
+        <button class="pl-item" data-layer="cut" aria-pressed="false" data-tip="Cut" data-sub="Goes right through — every edge between wood and a hole" data-side="bottom"><i class="sw sw-cut"></i>Cut</button>
+        <button class="pl-item" data-layer="score" aria-pressed="false" data-tip="Score" data-sub="A thin line burned on the surface — nothing is removed" data-side="bottom"><i class="sw sw-score"></i>Score</button>
+        <button class="pl-item" data-layer="engrave" aria-pressed="false" data-tip="Engrave" data-sub="A filled burn on the surface: whole shapes or bold lines" data-side="bottom"><i class="sw sw-engrave"></i>Engrave</button>
+        <span class="pl-sep" aria-hidden="true"></span>
+        <span class="pl-label" data-tip="Lines with wood on both sides" data-sub="What they become unless you pick one with the Engrave tool" data-side="bottom">Lines on wood</span>
+        <div class="segmented seg-mini" role="radiogroup" aria-label="Lines with wood on both sides">
+          <button role="radio" data-details="score" aria-checked="true">Score</button>
+          <button role="radio" data-details="engrave" aria-checked="false">Engrave</button>
+          <button role="radio" data-details="drop" aria-checked="false">None</button>
+        </div>
+      </div>
+      <div class="plan-tip" id="planTip" hidden><b id="ptTitle"></b><span id="ptText"></span><em id="ptAct"></em></div>
       <div class="view-ctl" id="viewCtl" data-visible="false">
         <button class="view-ctl-btn" id="actualBtn" data-tip="Actual pixels" data-key="⌘1" data-side="top" aria-label="Zoom to 100%">100%</button>
         <button class="view-ctl-btn" id="fitBtn" data-tip="Fit to window" data-key="⌘0" data-side="top" aria-label="Fit to window"><svg><use href="#i-fit"/></svg></button>
@@ -190,16 +232,99 @@
         </div>
       </section>
 
-      <section class="panel" data-open="false">
-        <button class="panel-head" aria-expanded="false"><svg class="chev"><use href="#i-chevron"/></svg>Adjust</button>
-        <div class="panel-body">
-          <p class="muted">Threshold, contrast and line weight — coming in a later build.</p>
+      <section class="panel" data-open="false" id="adjustPanel">
+        <button class="panel-head" aria-expanded="false"><svg class="chev"><use href="#i-chevron"/></svg>Adjust<span class="head-count" id="adjustCount"></span></button>
+        <div class="panel-body adjust" id="adjustBody" data-disabled="true">
+          <div class="adj-actions">
+            <button class="btn btn-small" id="adjAuto" data-tip="Auto" data-sub="Automatic threshold, light clean-up" data-side="bottom">Auto</button>
+            <label class="adj-switch"><input type="checkbox" class="switch" id="adjInvert" /> Invert</label>
+            <button class="btn btn-small btn-quiet" id="adjReset" data-tip="Reset" data-sub="Back to the image as it came" data-side="bottom">Reset</button>
+          </div>
+          <div class="adj-row" data-adj="brightness"><label for="adj-brightness">Brightness</label><output></output><input type="range" id="adj-brightness" min="-100" max="100" step="1" value="0" /></div>
+          <div class="adj-row" data-adj="contrast"><label for="adj-contrast">Contrast</label><output></output><input type="range" id="adj-contrast" min="-100" max="100" step="1" value="0" /></div>
+          <div class="adj-row" data-adj="threshold"><label for="adj-threshold">Threshold</label><output></output><input type="range" id="adj-threshold" min="1" max="254" step="1" value="128" /></div>
+          <details class="adj-more" id="adjMore">
+            <summary>More</summary>
+            <div class="adj-row" data-adj="smooth"><label for="adj-smooth">Smooth</label><output></output><input type="range" id="adj-smooth" min="0" max="4" step="1" value="0" /></div>
+            <div class="adj-row" data-adj="sharpen"><label for="adj-sharpen">Sharpen</label><output></output><input type="range" id="adj-sharpen" min="0" max="100" step="5" value="0" /></div>
+            <div class="adj-row" data-adj="despeckle"><label for="adj-despeckle">Despeckle</label><output></output><input type="range" id="adj-despeckle" min="0" max="40" step="1" value="0" /></div>
+            <div class="adj-row" data-adj="lineWeight"><label for="adj-lineWeight">Line weight</label><output></output><input type="range" id="adj-lineWeight" min="-3" max="3" step="1" value="0" /></div>
+          </details>
+          <p class="adj-delta" id="adjDelta" aria-live="polite"></p>
+          <p class="muted adj-hint">Hold <kbd>\</kbd> to compare with the original.</p>
         </div>
       </section>
     </aside>
   </div>
 
-  <input type="file" id="fileInput" accept="image/png,image/jpeg,image/webp" hidden />
+  <input type="file" id="fileInput" accept="image/png,image/jpeg,image/webp,.ajoure,application/json" hidden />
+  <div class="sheet-backdrop" id="exportSheet" hidden>
+    <div class="sheet export-sheet" role="dialog" aria-labelledby="exTitle" aria-modal="true">
+      <h3 id="exTitle">Export for the laser</h3>
+      <p class="ex-sub">An SVG for xTool Creative Space at real size: <span class="ex-key cut">red = cut</span> <span class="ex-key score">blue = score</span> <span class="ex-key engrave">black = engrave</span></p>
+      <dl class="ex-facts">
+        <div><dt>Size</dt><dd><span id="exSize">–</span> <button class="btn btn-small btn-quiet" id="exSizeBtn" type="button">Change…</button></dd></div>
+        <div><dt>Material</dt><dd id="exMat">–</dd></div>
+        <div><dt>Cutting</dt><dd id="exCut">Working it out…</dd></div>
+      </dl>
+      <div class="setting ex-details">
+        <div class="setting-label">
+          <span>Lines on wood</span>
+          <small>Lines with wood on both sides are never cut. This is what they become; switch single lines with the Engrave tool in the Plan view</small>
+        </div>
+        <div class="segmented seg-choice seg-3" role="radiogroup" aria-label="Lines on wood">
+          <button role="radio" data-details="score" aria-checked="true">Score</button>
+          <button role="radio" data-details="engrave" aria-checked="false">Engrave</button>
+          <button role="radio" data-details="drop" aria-checked="false">None</button>
+        </div>
+      </div>
+      <div class="ex-warn" id="exWarn" hidden></div>
+      <div class="sheet-actions">
+        <button class="btn" id="exPreview" type="button">Cut preview</button>
+        <span class="sheet-spacer"></span>
+        <button class="btn" id="exCancel" type="button">Cancel</button>
+        <button class="btn btn-primary" id="exGo" type="button">Export SVG…</button>
+      </div>
+    </div>
+  </div>
+  <div class="sheet-backdrop" id="sheet" hidden>
+    <div class="sheet" role="alertdialog" aria-labelledby="sheetTitle" aria-describedby="sheetText">
+      <svg class="sheet-mark" aria-hidden="true"><use href="#i-mark"/></svg>
+      <h3 id="sheetTitle">Save changes?</h3>
+      <p id="sheetText">Your edits will be lost if you don’t save them.</p>
+      <div class="sheet-actions">
+        <button class="btn" id="sheetDiscard">Don’t Save</button>
+        <span class="sheet-spacer"></span>
+        <button class="btn" id="sheetCancel">Cancel</button>
+        <button class="btn btn-primary" id="sheetSave">Save…</button>
+      </div>
+    </div>
+  </div>
+  <div class="popover material-pop" id="materialPop" role="dialog" aria-label="Material" data-align="left">
+    <h2>Material</h2>
+    <div class="radio-list" role="radiogroup" aria-label="Material" id="materialList"></div>
+    <p class="muted pop-note">Starting values — calibrate them with a test cut.</p>
+  </div>
+  <div class="popover width-pop" id="widthPop" role="dialog" aria-label="Piece width" data-align="left">
+    <h2>Piece width</h2>
+    <form class="width-form" id="widthForm">
+      <label class="field"><input type="text" inputmode="decimal" id="widthInput" spellcheck="false" autocomplete="off" aria-label="Width in millimetres" /><span>mm</span></label>
+      <button class="btn btn-primary btn-small" type="submit">Set</button>
+    </form>
+    <p class="muted pop-note" id="widthNote">The width of the finished piece, outside edge to outside edge. Leaks and islands don't depend on it.</p>
+    <button class="btn btn-small btn-quiet" id="widthReset" type="button">Use the estimate (50 mm)</button>
+  </div>
+  <div class="popover flow-pop" id="flowPop" role="dialog" aria-label="Flow test mode">
+    <h2>Flow test</h2>
+    <div class="radio-list" role="radiogroup" aria-label="Flow test mode">
+      <button role="radio" data-flowmode="flow" aria-checked="true"><span class="rl-title">Flow</span><span class="rl-sub">Animated water spreads from every hole</span></button>
+      <button role="radio" data-flowmode="quick" aria-checked="false"><span class="rl-title">Quick</span><span class="rl-sub">Everything fills at once</span></button>
+    </div>
+  </div>
+  <div class="popover history-pop" id="historyPop" role="dialog" aria-label="History" data-align="left">
+    <h2>History</h2>
+    <ol class="history-list" id="historyList"></ol>
+  </div>
   <div class="popover" id="settingsPop" role="dialog" aria-label="Settings">
     <h2>Settings</h2>
     <div class="setting">

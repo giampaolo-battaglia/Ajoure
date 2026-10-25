@@ -3,7 +3,8 @@
 // For each real stroke end, find the nearest ink that is close in a straight line
 // but far away along the ink itself (so it's a different part of the drawing). Pure, no DOM.
 
-import { emptyAlong } from './raster.js';
+import { emptyAlong, drawLine } from './raster.js';
+import { labelComponents } from './label.js';
 
 /**
  * @typedef {{ax:number, ay:number, bx:number, by:number, gapPx:number}} Gap
@@ -204,6 +205,58 @@ export function findNecks(ink, toInk, w, h, o) {
       by: Math.round(cy + (hi + 1) * dy),
       gapPx: Math.max(1, 2 * depth - 1),
     });
+  }
+  return out;
+}
+
+/**
+ * Openings: places where a line stops short of the next one (up to `maxGapPx`) and closing it
+ * would make a sizeable piece of its own — typically a circle that doesn't quite close (a sun
+ * drawn behind a tower). All nearby openings are closed together on a copy, so a shape with two
+ * openings is still found. Gaps that matter as leaks are reported as leaks instead; these are hints.
+ * @param {Uint8Array} solid the drawing as it is (1 = line or cut)
+ * @param {Int32Array} closedLabels areas with the leak-sized candidates closed (what the guess used)
+ * @param {Int32Array} nowLabels areas of the drawing as it is (nothing closed)
+ * @param {number} w @param {number} h
+ * @param {{x:number, y:number, dx:number, dy:number}[]} ends stroke ends
+ * @param {{minGapPx:number, maxGapPx:number, minPartPx:number, strokeW:number, area?: ArrayLike<number>}} o
+ * @returns {Gap[]}
+ */
+export function findOpenings(solid, closedLabels, nowLabels, w, h, ends, o) {
+  const R = o.maxGapPx + o.strokeW / 2 + 1;
+  const wide = findGaps(solid, w, h, ends, { searchR: R, geoLimit: Math.round(2 * R + 2 * o.strokeW), strokeW: o.strokeW })
+    .filter((g) => g.gapPx > o.minGapPx && g.gapPx <= o.maxGapPx);
+  if (!wide.length) return [];
+  // Close every candidate (and keep the leak-sized closures already in closedLabels).
+  const n = w * h;
+  const shut = new Uint8Array(n);
+  for (let p = 0; p < n; p++) shut[p] = closedLabels[p] ? 0 : 1;
+  for (const g of wide) drawLine(shut, w, h, g.ax, g.ay, g.bx, g.by, 1);
+  const parts = labelComponents(shut, w, h, 0, false);
+  /** @type {Gap[]} */
+  const out = [];
+  for (const g of wide) {
+    const len = Math.hypot(g.bx - g.ax, g.by - g.ay) || 1;
+    const nx = -(g.by - g.ay) / len, ny = (g.bx - g.ax) / len;
+    const cx = (g.ax + g.bx) / 2, cy = (g.ay + g.by) / 2;
+    /** First open pixel on one side of the closing stroke. @param {number} sgn */
+    const side = (sgn) => {
+      for (let t = 2; t <= o.strokeW + 8; t++) {
+        const x = Math.round(cx + sgn * nx * t), y = Math.round(cy + sgn * ny * t);
+        if (x < 0 || y < 0 || x >= w || y >= h) return -1;
+        const q = y * w + x;
+        if (parts.labels[q]) return q;
+      }
+      return -1;
+    };
+    const a = side(1), b = side(-1);
+    if (a < 0 || b < 0) continue;
+    const pa = parts.labels[a], pb = parts.labels[b];
+    if (pa === pb || parts.border[pa] || parts.border[pb]) continue; // no split, or it's the outside
+    if (Math.min(parts.area[pa], parts.area[pb]) < o.minPartPx) continue;
+    // Only if it matters: in the drawing as it is, both sides are still one area.
+    if (nowLabels[a] !== nowLabels[b]) continue;
+    out.push(g);
   }
   return out;
 }

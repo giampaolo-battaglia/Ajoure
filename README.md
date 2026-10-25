@@ -37,7 +37,15 @@ npm test
 Drop an image and Ajouré scans it at once: the top bar sums up what it found, red dotted boxes mark
 **leaks** (a gap joining a hole to the wood) and **islands** (wood that would fall out),
 and **Wood/Hole** in the top bar shows what stays (white) and what gets cut (grey).
+**Plan** shows what the laser will do: wood you keep, parts that fall out (hatched), **cut** (red, right through),
+**score** (blue, a thin surface line) and **engrave** (brown, a filled surface burn). Click a legend item to pick it
+out; hover anything for an explanation.
 Prefer round pins? Open **Settings** (top-right button, or ⌘,) and pick **Pin**.
+
+## Open and save
+
+**Open** (⌘O) takes an image or a saved project; **Save** (⌘S) writes a `.ajoure` project with the image,
+your edits and settings — open it later to carry on. A dot next to the name means unsaved changes.
 
 ## Fixing
 
@@ -48,13 +56,14 @@ Or fix it by hand:
 | Tool | Key | What it does |
 |---|---|---|
 | Bucket | B | Click an area to swap wood ↔ hole (⇧ wood, ⌥ hole); hovering shows how far it spills — as a tint, or as flowing water (Settings → Bucket preview) |
+| Engrave | G | In the Plan view: click a shape to burn it solid (outline included), again to clear; click a line on the wood to switch score ↔ engrave |
 | Wood brush | W | Paint material — close a gap, thicken a stroke |
 | Hole brush | E | Paint a cut — separate strokes, open a hole |
 | Revert brush | R | Wipe your edits back to the original |
 | Connector | C | Click A then B: a wood bridge |
 | Separator | X | Drag across a junction to cut it |
 
-`[` / `]` resize the brush, ⇧-click paints a straight line, ⌘Z / ⇧⌘Z undo and redo.
+`[` / `]` (or the size bar that appears on the canvas) resize the brush, ⇧-click paints a straight line, ⌘Z / ⇧⌘Z undo and redo.
 Your original image is never changed: edits live on their own layer.
 
 ## Navigation cheat sheet
@@ -69,3 +78,26 @@ Your original image is never changed: edits live on their own layer.
 
 **In Safari**, ⌘1, ⌘2, ⌘0 and ⌘+/⌘− belong to Safari itself, so use **⌃⌘** (Control+Command) instead:
 ⌃⌘0 fit, ⌃⌘1 100%, ⌃⌘2 200%, ⌃⌘+ / ⌃⌘− zoom. These work in Chrome too.
+
+## Flow test
+
+Press **T** (or the **Flow test** button): every hole fills with water. If a leak lets it out, the gap
+flashes and the escaped water turns amber — that's what the leak would take with it. The caret next to the
+button switches between **Flow** (animated) and **Quick**. Esc or a click skips to the end; T again clears it.
+
+## Adjust, size and material
+
+- **Adjust** (sidebar): Auto, Invert, Brightness, Contrast, Threshold; under *More*: Smooth, Sharpen, Despeckle,
+  Line weight. Each change re-checks and shows how the issue counts moved. Hold **\\** to compare with the original.
+- **Width** (top bar): type the real width of the finished piece in mm; the "est" badges go away.
+- **Material** (top bar): sets the minimum wood and hole widths for the mm checks — **Thin wood** (quick fix
+  *Thicken*), **Near-touch** and **Speck hole** (quick fix *Fill*). Values are starting points until calibrated.
+- Leaks and islands never depend on width or material.
+
+## Export for the laser
+
+**Export SVG** (⇧⌘E) writes the cut file for xTool Creative Space at real size: red lines are cuts (holes first,
+then the outline), blue lines are scores for lines drawn on the wood (stamens, veins), black fills are engraving (shapes and
+lines you picked with the Engrave tool). "Lines on wood" sets the default for those lines: Score, Engrave or None. Set the real **Width** first; the sheet warns if leaks or loose pieces are still open.
+The **Cut** view shows the piece as it will come out of the laser.
+

@@ -67,3 +67,77 @@ with a new one that says what changed and why.
 **Because:** Paced by distance, a zoomed-in view sat still while the water travelled off-screen, then flooded in one frame. The plain 5/7 distance gave octagonal fronts that looked mechanical. The area outside the piece (~1M px) took ~120–180 ms on the main thread.
 **Rejected:** Real fluid simulation (heavy, no clearer); restarting the pour on every mouse move (it restarts only when the cursor enters a different area).
 **Revisit if:** milestone 5's Flow test needs a different look; reuse this engine rather than writing a second one.
+
+## 010 — Flow test: sealed = today's drawing with only the flagged leaks closed
+**Date:** 2026-10-22
+**Chose:** Water pours from the deepest point of every hole (and invisibly from outside) through the drawing as it is; "where it should stop" comes from the same drawing with only the pinned leaks closed, each sealed area taking the scan's leak-free guess by majority. Holes fill in the first half, leaks break at the half mark, escapes flood the second half.
+**Because:** Using the scan's fully-closed preview (every candidate gap closed) made water "escape" through gaps that were never pinned — amber in places with no marker. Timing by distance alone made the gap flash after 5 % of the pour, before the holes had visibly filled.
+**Rejected:** Per-region quick tint only (no story); WebGL shader (canvas with incremental painting is fast enough: no long tasks).
+**Revisit if:** a leak the Flow test shows isn't pinned (or vice versa) — they must always agree.
+
+## 011 — Structure checks are scale-free; width and material only drive the mm checks
+**Date:** 2026-10-22
+**Chose:** Leak detection always uses the 50 mm reference scale and the default 0.6 mm gap, whatever width/material is set. Thin wood, near-touch, speck checks and brush sizes use the real width and the chosen material.
+**Because:** With the real width, Julie went from 2 leaks to 8 at 70 mm (smaller "significant part" area in px). SPEC §4 says structure rules don't depend on size.
+**Revisit if:** very large or very small pieces need a different leak sensitivity — then make it an explicit setting, not a side effect of width.
+
+## 012 — Mm checks ignore corners; adjustments re-prepare and reset the prior
+**Date:** 2026-10-22
+**Chose:** Thin/near-touch spots come from the centre line of the shape; the last couple of px of a wedge (where two lines meet) are ignored and a spot must stay narrow for 1.5× (wood) / 3× (holes) the minimum width. Image adjustments re-run prepare() in the worker and drop the stability prior (a different trace no longer lines up with the old guess).
+**Because:** Without the corner rule Julie showed 77 near-touches, nearly all at line junctions; with it, 6 real ~0.45 mm channels. Keeping the prior after Line weight → Reset left Julie at 1 leak instead of 2.
+**Revisit if:** a real thin strut is missed (lower the run factor) or the list gets noisy on other images.
+
+## 013 — Project files are one JSON with the original image inside
+**Date:** 2026-10-22
+**Chose:** `.ajoure` = JSON: original image as a data URL, edits layer run-length encoded (base64), Bucket clicks, adjustments, width, material name, ignored issue ids. Chrome saves through the "Save as" dialog; Safari downloads to Downloads. Undo history isn't saved.
+**Because:** One self-contained file to move around or back up; edits are mostly zeros (a few KB encoded); no server, no extra dependencies.
+**Revisit if:** files get big (high-res images) → zip container; or history across sessions is wanted.
+
+## 014 — Open outlines are hints; all candidates are closed together to find them
+**Date:** 2026-10-22
+**Chose:** Stroke ends up to 3 mm from the next line are all closed on a copy; a candidate is reported (info, not critical) only if both sides are then separate pieces ≥ 100 mm² and the drawing as it is still joins them.
+**Because:** On Paris the sun has two openings (1.25 mm and 0.47 mm); checked one at a time, neither seemed to matter. Checking per candidate on Julie gave ~20 false hints (leaf veins); the size floor + joint closing gives 2 on Paris (both the sun) and 2 harmless ones on Julie.
+**Revisit if:** hints get noisy on new images (raise the size floor) or miss real outlines (raise the 3 mm reach).
+
+## 015 — The Bucket fills the piece, not the whole connected area
+**Date:** 2026-10-22
+**Chose:** On click, the worker splits the clicked area at its narrow passages (< 1 mm, same limit as leak necks); if there's more than one piece, the passages around the clicked one are painted wood and the fill applies to it — one undo step, with a toast saying so. A single-piece area behaves exactly as before.
+**Because:** On Paris the sky was joined to the frame/vines/letters through hairline gaps that aren't leaks (wood both sides); a plain Bucket click on the sky flipped the whole piece (21 islands, 141 thin spots). With pieces: sky only, 0 islands.
+**Rejected:** Bucketing the analysis' closed regions without changing the drawing (the cut would still be joined); asking the user to find the gap themselves (that was the complaint).
+**Revisit if:** someone wants the old "flood everything connected" — add ⌥⇧-click for it.
+
+## 016 — Own tracer instead of vendoring potrace
+**Date:** 2026-10-23
+**Chose:** Crack-following outlines (closed and duplicate-free by construction) + resampling, Gaussian smoothing (σ ≈ 1.2 px) and Douglas–Peucker (0.3 px), drawn as cubic Béziers whose handles are a third of each segment and may bulge at most ⅓ px; > 50° turns stay corners.
+**Because:** No dependency (PROJECT ground rules), ~0.3 s for Julie, and the outline stays within a fraction of a pixel of the scan (≈ 0.05 mm at 8 px/mm, under the 0.15 mm kerf). Plain Catmull–Rom overshot next to long straight edges (spikes) and its averaged tangents made long edges wavy — the handle-length and bulge rules fixed both.
+**Rejected:** potrace port (bigger, GPL); polylines only (fine for the laser, but heavier files and visible facets in XCS).
+**Revisit if:** XCS shows jaggies on small curves (lower the tolerance) or files get large.
+
+## 017 — SVG conventions for XCS
+**Date:** 2026-10-23
+**Chose:** width/height in mm + viewBox in mm, 1 mm margin; one path per outline; holes before outer outlines; stroke colours red #FF0000 (cut), blue #0000FF (score, open paths), black fill (engrave); stroke 0.1 mm, no fill on cut paths.
+**Because:** XCS assigns processing by colour and imports physical units from mm attributes; cutting insides first keeps the piece from shifting once its outline is free.
+**Revisit if:** the first import in XCS shows a different scale (some tools assume 96 dpi px) or ignores the colours.
+
+## 018 — Width changes keep the stability guess
+**Date:** 2026-10-23
+**Chose:** The worker drops its previous guess (prior) only when the adjustments change, not when width or material change.
+**Because:** Entering 52 mm after fixing Julie re-prepared the image, dropped the prior, and a fixed leak came back. Width and material don't move a pixel.
+
+## 019 — Engraving is a paint on the area, not a third material class
+**Date:** 2026-10-25
+**Chose:** An engraved area stays wood in the analysis (`regionEngraved` beside `regionClass`); the Engrave tool adds a seed like the Bucket. Line choices are seeds too, read only by the export.
+**Because:** Engraving doesn't change what holds together, so leaks/islands/thin checks must not change; seeds already give undo, save/reopen and "latest click wins".
+**Revisit if:** engraved areas need their own checks (e.g. a tiny engraved island next to a cut charring).
+
+## 020 — One "line" is a stroke from fork to fork
+**Date:** 2026-10-25
+**Chose:** Per-line score/engrave applies to the stroke between forks (forks found by neighbour runs), not to the whole connected drawing.
+**Because:** On the Halloween bookmark the moon's rim, the castle and its spires are one connected network; clicking the rim switched the castle too.
+**Revisit if:** people expect a click to take a whole outline (then add ⌥-click = whole network).
+
+## 021 — Engrave fills are compound even-odd paths
+**Date:** 2026-10-25
+**Chose:** All engraved areas in one path, all engraved lines in another, `fill-rule="evenodd"` on the group.
+**Because:** One path per contour filled a ring's inner contour as a second solid shape.
+**Revisit if:** XCS ignores fill-rule (then emit outer + its holes per path with opposite winding).

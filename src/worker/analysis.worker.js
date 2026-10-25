@@ -8,8 +8,12 @@ import { prepare, analyzeEdited } from '../engine/analyze.js';
 let base = null;
 /** @type {Uint8Array|null} previous scan's own guess (before Bucket clicks), with leaks closed */
 let prior = null;
-/** @type {object} */
+/** @type {import('../engine/analyze.js').ScanOptions} */
 let options = {};
+/** @type {{rgba: Uint8ClampedArray, w: number, h: number}|null} the source pixels, kept to re-prepare */
+let source = null;
+/** What prepare() depends on; a change means re-preparing the image. */
+const prepKey = (/** @type {any} */ o) => JSON.stringify({ a: o.adjust || null, w: o.widthMm ?? null });
 
 self.onmessage = (/** @type {MessageEvent} */ e) => {
   const msg = e.data;
@@ -17,12 +21,25 @@ self.onmessage = (/** @type {MessageEvent} */ e) => {
     let res;
     if (msg.kind === 'open') {
       options = msg.opts || {};
+      source = { rgba: msg.rgba, w: msg.w, h: msg.h };
+      prior = null;
       base = prepare(msg.rgba, msg.w, msg.h, options);
       res = analyzeEdited(base, null, [], options);
       res.timings = { prepare: base.prepMs, ...res.timings };
       res.totalMs += base.prepMs;
     } else if (msg.kind === 'update') {
-      if (!base) throw new Error('No image to re-check');
+      if (!base || !source) throw new Error('No image to re-check');
+      // New adjustments, width or material: re-prepare if the image itself changes.
+      if (msg.opts) {
+        const next = { ...options, ...msg.opts };
+        if (prepKey(next) !== prepKey(options)) {
+          base = prepare(source.rgba, source.w, source.h, next);
+          // Adjustments change the drawing itself: the old guess no longer lines up, start fresh.
+          // A new width or material doesn't move a pixel, so the guess stays (and stays stable).
+          if (JSON.stringify(next.adjust || null) !== JSON.stringify(options.adjust || null)) prior = null;
+        }
+        options = next;
+      }
       res = analyzeEdited(base, msg.edits, msg.seeds || [], { ...options, prior });
     } else {
       return;

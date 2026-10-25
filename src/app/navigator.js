@@ -47,7 +47,7 @@ export class Navigator {
     this.dim = cs.getPropertyValue('--nav-dim').trim() || 'rgba(0,0,0,.4)';
   }
 
-  /** Build a downscaled thumbnail once per image. @param {ImageBitmap} bitmap */
+  /** Build a downscaled thumbnail once per image. @param {ImageBitmap|HTMLCanvasElement} bitmap */
   setImage(bitmap) {
     this.source = bitmap;
     this.layout();

@@ -1,19 +1,20 @@
 // @ts-check
-// Fixing tools (SPEC §6.5): Bucket, Wood brush, Hole brush, Revert brush, Connector, Separator.
+// Fixing tools (SPEC §6.5): Bucket, Engrave, Wood brush, Hole brush, Revert brush, Connector, Separator.
 // Works in image pixels; the document records the edits, the view shows them.
 
-import { EDIT_NONE, EDIT_WOOD, EDIT_HOLE, WOOD, HOLE, WASTE, BASSWOOD_3MM } from '../engine/analyze.js';
+import { EDIT_NONE, EDIT_WOOD, EDIT_HOLE, WOOD, HOLE, WASTE, PX_LINE, BASSWOOD_3MM } from '../engine/analyze.js';
 import { pourOrder, wobble, Pour } from './water.js';
 import { visibleImageRect } from './viewport.js';
+import { union } from './doc.js';
 
-/** @typedef {'hand'|'zoom'|'bucket'|'wood'|'hole'|'revert'|'connector'|'separator'} ToolId */
+/** @typedef {'hand'|'zoom'|'bucket'|'engrave'|'wood'|'hole'|'revert'|'connector'|'separator'} ToolId */
 /** @typedef {import('./doc.js').EditDoc} EditDoc */
 /** @typedef {import('./doc.js').Rect} Rect */
 /** @typedef {import('./scanner.js').ScanResult} ScanResult */
 /** @typedef {import('./view.js').CanvasView} CanvasView */
 
 /** Tools that change the design (everything but Hand and Zoom). */
-export const EDIT_TOOLS = /** @type {ToolId[]} */ (['bucket', 'wood', 'hole', 'revert', 'connector', 'separator']);
+export const EDIT_TOOLS = /** @type {ToolId[]} */ (['bucket', 'engrave', 'wood', 'hole', 'revert', 'connector', 'separator']);
 /** Tools shown as a brush circle instead of the system cursor. */
 export const BRUSH_TOOLS = /** @type {ToolId[]} */ (['wood', 'hole', 'revert', 'connector', 'separator']);
 
@@ -21,6 +22,7 @@ export const TOOL_NAMES = /** @type {Record<ToolId, string>} */ ({
   hand: 'Hand',
   zoom: 'Zoom',
   bucket: 'Bucket',
+  engrave: 'Engrave',
   wood: 'Wood brush',
   hole: 'Hole brush',
   revert: 'Revert brush',
@@ -36,6 +38,8 @@ export class ToolController {
    *   getScan: () => ScanResult|null,
    *   onPaint: (rect: Rect|null) => void,
    *   onBucket: (region: number, cls: number, x: number, y: number) => void,
+   *   onEngrave: (region: number, x: number, y: number) => void,
+   *   onEngraveLine: (x: number, y: number) => void,
    *   say: (msg: string) => void,
    * }} o
    */
@@ -45,13 +49,24 @@ export class ToolController {
     this.tool = 'hand';
     /** Brush diameters in image px (set from the material once the scale is known). */
     this.size = { wood: 8, hole: 4, revert: 12, connector: 10, separator: 4 };
-    this.sizedFor = 0;
+    /** The material's sizes, for "Default". */
+    this.defaults = { ...this.size };
+    /** @type {((tool: ToolId) => void)|null} told when a brush size changes */
+    this.onSize = null;
+    this.sizedFor = '';
     /** @type {{x:number, y:number}|null} last pointer position in image px */
     this.last = null;
     /** @type {{ax:number, ay:number}|null} connector's first point */
     this.conn = null;
     /** @type {{ax:number, ay:number}|null} separator drag start */
     this.sep = null;
+    /**
+     * The connector just placed: its midpoint can be dragged to curve it (SPEC §6.5).
+     * @type {{ax:number, ay:number, bx:number, by:number, mx:number, my:number, patch: object}|null}
+     */
+    this.lastConn = null;
+    /** dragging the last connector's midpoint */
+    this.curving = false;
     this.painting = false;
     /** Bucket hover cache */
     this.hoverRegion = 0;
@@ -81,19 +96,21 @@ export class ToolController {
   }
 
   /**
-   * Default brush sizes from the material's minimum widths (SPEC §6.5), once per image scale.
-   * @param {number} pxPerMm
+   * Default brush sizes from the material's minimum widths (SPEC §6.5), once per scale and material.
+   * @param {number} pxPerMm @param {{name: string, minWoodWidth: number, minHoleWidth: number}} [p]
    */
-  setScale(pxPerMm) {
-    if (this.sizedFor === pxPerMm) return;
-    this.sizedFor = pxPerMm;
-    const p = BASSWOOD_3MM;
+  setScale(pxPerMm, p = BASSWOOD_3MM) {
+    const key = `${pxPerMm}|${p.name}`;
+    if (this.sizedFor === key) return;
+    this.sizedFor = key;
     this.size.wood = Math.max(2, p.minWoodWidth * pxPerMm);
     this.size.hole = Math.max(2, p.minHoleWidth * pxPerMm);
     this.size.revert = Math.max(4, this.size.wood * 1.5);
     this.size.connector = Math.max(2, p.minWoodWidth * 1.2 * pxPerMm);
     this.size.separator = Math.max(2, p.minHoleWidth * pxPerMm);
+    this.defaults = { ...this.size };
     this.pxPerMm = pxPerMm;
+    this.onSize?.(this.tool);
   }
 
   /** @param {ToolId} t */
@@ -107,9 +124,25 @@ export class ToolController {
   cancel() {
     this.conn = null;
     this.sep = null;
+    this.dropConnHandle();
     this.o.view.toolOverlay = null;
     this.clearHover();
     this.o.view.requestRender();
+  }
+
+  /** Does the current tool have a size? */
+  get sized() {
+    const t = this.tool;
+    return t === 'wood' || t === 'hole' || t === 'revert' || t === 'connector' || t === 'separator';
+  }
+
+  /** Set the current brush's diameter (image px, 1…400). @param {number} px */
+  setSize(px) {
+    const t = this.tool;
+    if (!(t === 'wood' || t === 'hole' || t === 'revert' || t === 'connector' || t === 'separator')) return;
+    this.size[t] = Math.max(1, Math.min(400, px));
+    this.refreshOverlay();
+    this.onSize?.(t);
   }
 
   /** `[` / `]`: resize the current brush. Returns a label for feedback, or null. @param {number} dir */
@@ -117,8 +150,7 @@ export class ToolController {
     const t = this.tool;
     if (!(t === 'wood' || t === 'hole' || t === 'revert' || t === 'connector' || t === 'separator')) return null;
     const k = dir > 0 ? 1.25 : 0.8;
-    this.size[t] = Math.max(1, Math.min(400, this.size[t] * k));
-    this.refreshOverlay();
+    this.setSize(this.size[t] * k);
     const mm = this.pxPerMm ? `${(this.size[t] / this.pxPerMm).toFixed(2)} mm` : `${Math.round(this.size[t])} px`;
     return `${TOOL_NAMES[t]} · ${mm}`;
   }
@@ -138,6 +170,10 @@ export class ToolController {
       this.bucket(e, p);
       return true;
     }
+    if (t === 'engrave') {
+      this.engrave(p);
+      return true;
+    }
     if (t === 'wood' || t === 'hole' || t === 'revert') {
       const value = t === 'wood' ? EDIT_WOOD : t === 'hole' ? EDIT_HOLE : EDIT_NONE;
       const r = this.size[t] / 2;
@@ -149,7 +185,13 @@ export class ToolController {
       return true;
     }
     if (t === 'connector') {
+      if (!this.conn && this.nearConnHandle(p)) {
+        this.curving = true;
+        this.refreshOverlay();
+        return true;
+      }
       if (!this.conn) {
+        this.dropConnHandle();
         this.conn = { ax: p.x, ay: p.y };
         this.refreshOverlay();
         return true;
@@ -158,7 +200,12 @@ export class ToolController {
       this.conn = null;
       doc.beginStroke('Connector');
       this.o.onPaint(doc.segment(ax, ay, p.x, p.y, this.size.connector / 2, EDIT_WOOD));
-      doc.endStroke();
+      if (doc.endStroke()) {
+        this.lastConn = {
+          ax, ay, bx: p.x, by: p.y, mx: (ax + p.x) / 2, my: (ay + p.y) / 2,
+          patch: doc.undoStack[doc.undoStack.length - 1],
+        };
+      }
       this.refreshOverlay();
       return true;
     }
@@ -186,6 +233,12 @@ export class ToolController {
   /** @param {PointerEvent} e @param {{x:number, y:number}} p */
   up(e, p) {
     const doc = this.o.getDoc();
+    if (this.curving) {
+      this.curving = false;
+      if (doc && this.lastConn) this.curveConnector(doc, p);
+      this.refreshOverlay();
+      return;
+    }
     if (this.painting && doc) {
       this.painting = false;
       doc.endStroke();
@@ -212,7 +265,7 @@ export class ToolController {
       this.o.view.requestRender();
       return;
     }
-    if (this.tool === 'bucket') this.hoverBucket(p);
+    if (this.tool === 'bucket' || this.tool === 'engrave') this.hoverBucket(p);
     else this.clearHover();
     this.refreshOverlay();
   }
@@ -222,7 +275,17 @@ export class ToolController {
     const p = this.last;
     const t = this.tool;
     const color = this.accentCss || '#14857a';
-    if (!p || !BRUSH_TOOLS.includes(t)) {
+    const doc = this.o.getDoc();
+    // The curve handle stays only while the connector is the latest edit.
+    if (this.lastConn && (!doc || doc.undoStack[doc.undoStack.length - 1] !== this.lastConn.patch)) this.lastConn = null;
+    view.connHandle = t === 'connector' && this.lastConn && !this.conn ? { x: this.lastConn.mx, y: this.lastConn.my } : null;
+    if (t === 'connector' && this.curving && this.lastConn && p) {
+      const c = this.lastConn;
+      const cx = 2 * p.x - (c.ax + c.bx) / 2;
+      const cy = 2 * p.y - (c.ay + c.by) / 2;
+      view.toolOverlay = { kind: 'curve', ax: c.ax, ay: c.ay, cx, cy, bx: c.bx, by: c.by, r: this.size.connector / 2, color };
+      view.connHandle = { x: p.x, y: p.y };
+    } else if (!p || !BRUSH_TOOLS.includes(t) || (t === 'connector' && !this.conn && this.nearConnHandle(p))) {
       view.toolOverlay = null;
     } else if (t === 'connector' && this.conn) {
       view.toolOverlay = { kind: 'line', ax: this.conn.ax, ay: this.conn.ay, bx: p.x, by: p.y, r: this.size.connector / 2, color };
@@ -233,6 +296,67 @@ export class ToolController {
       view.toolOverlay = { kind: 'brush', x: p.x, y: p.y, r: size / 2, color };
     }
     view.requestRender();
+  }
+
+  // ---- connector curve ---------------------------------------------------------------
+
+  /** Is p on the last connector's midpoint handle? (10 screen px) @param {{x:number, y:number}} p */
+  nearConnHandle(p) {
+    const c = this.lastConn;
+    const doc = this.o.getDoc();
+    if (!c || !doc || doc.undoStack[doc.undoStack.length - 1] !== c.patch) return false;
+    const d = Math.hypot(p.x - c.mx, p.y - c.my) * this.o.view.viewport.scale;
+    return d <= 10;
+  }
+
+  /** A system cursor to show instead of the brush circle, if any. */
+  cursor() {
+    if (this.tool !== 'connector') return null;
+    if (this.curving) return 'grabbing';
+    return !this.conn && this.last && this.nearConnHandle(this.last) ? 'grab' : null;
+  }
+
+  dropConnHandle() {
+    this.lastConn = null;
+    this.curving = false;
+    this.o.view.connHandle = null;
+  }
+
+  /**
+   * Replace the last (straight) connector with a curve through the dragged midpoint.
+   * One undo step: the straight bridge is undone first, then the curve is drawn.
+   * @param {EditDoc} doc @param {{x:number, y:number}} m new midpoint
+   */
+  curveConnector(doc, m) {
+    const c = /** @type {NonNullable<ToolController['lastConn']>} */ (this.lastConn);
+    if (Math.hypot(m.x - c.mx, m.y - c.my) < 0.5) return;
+    if (doc.undoStack[doc.undoStack.length - 1] !== c.patch) return this.dropConnHandle();
+    doc.undo();
+    doc.redoStack.pop(); // the straight version is replaced, not redoable
+    const cx = 2 * m.x - (c.ax + c.bx) / 2;
+    const cy = 2 * m.y - (c.ay + c.by) / 2;
+    const r = this.size.connector / 2;
+    const len = Math.hypot(cx - c.ax, cy - c.ay) + Math.hypot(c.bx - cx, c.by - cy);
+    const n = Math.max(4, Math.ceil(len / Math.max(1, r)));
+    doc.beginStroke('Connector');
+    /** @type {import('./doc.js').Rect|null} */
+    let dirty = null;
+    let px = c.ax, py = c.ay;
+    for (let i = 1; i <= n; i++) {
+      const t = i / n;
+      const u = 1 - t;
+      const x = u * u * c.ax + 2 * u * t * cx + t * t * c.bx;
+      const y = u * u * c.ay + 2 * u * t * cy + t * t * c.by;
+      dirty = union(dirty, doc.segment(px, py, x, y, r, EDIT_WOOD));
+      px = x;
+      py = y;
+    }
+    this.o.onPaint(dirty);
+    if (doc.endStroke()) {
+      c.mx = m.x;
+      c.my = m.y;
+      c.patch = doc.undoStack[doc.undoStack.length - 1];
+    } else this.dropConnHandle();
   }
 
   // ---- bucket ---------------------------------------------------------------------
@@ -253,6 +377,24 @@ export class ToolController {
     this.o.onBucket(r, cls, x, y);
   }
 
+  /**
+   * Engrave: click an area to burn its whole surface (click it again to clear); click a line with
+   * wood on both sides to switch it between score and engrave. Lines along a hole are cut edges.
+   * @param {{x:number, y:number}} p
+   */
+  engrave(p) {
+    const scan = this.o.getScan();
+    if (!scan) return this.o.say('Still scanning — try again in a second.');
+    const x = Math.floor(p.x);
+    const y = Math.floor(p.y);
+    if (x < 0 || y < 0 || x >= scan.w || y >= scan.h) return;
+    const q = y * scan.w + x;
+    const r = scan.labels[q];
+    if (!r || scan.classMap[q] === PX_LINE) return this.o.onEngraveLine(x, y);
+    if (scan.regionClass[r] === WASTE) return this.o.say('That’s outside the piece.');
+    this.o.onEngrave(r, x, y);
+  }
+
   /** @param {'tint'|'water'} style */
   setPreview(style) {
     this.preview = style;
@@ -269,7 +411,7 @@ export class ToolController {
     const scan = this.o.getScan();
     const view = this.o.view;
     if (!scan) return this.clearHover();
-    const water = this.preview === 'water';
+    const water = this.preview === 'water' && this.tool === 'bucket';
     const x = Math.floor(p.x);
     const y = Math.floor(p.y);
     const r = x >= 0 && y >= 0 && x < scan.w && y < scan.h ? scan.labels[y * scan.w + x] : 0;
@@ -291,7 +433,7 @@ export class ToolController {
     const g = /** @type {CanvasRenderingContext2D} */ (c.getContext('2d'));
     const img = g.createImageData(bw, bh);
     const d = img.data;
-    const [ar, ag, ab] = this.accent;
+    const [ar, ag, ab] = this.tool === 'engrave' ? [110, 58, 20] : this.accent;
     for (let yy = 0; yy < bh; yy++) {
       const row = (y0 + yy) * scan.w + x0;
       for (let xx = 0; xx < bw; xx++) {
@@ -300,7 +442,7 @@ export class ToolController {
           d[k] = ar;
           d[k + 1] = ag;
           d[k + 2] = ab;
-          d[k + 3] = 110;
+          d[k + 3] = this.tool === 'engrave' ? 70 : 110;
         }
       }
     }
@@ -382,3 +524,4 @@ export class ToolController {
     return b;
   }
 }
+

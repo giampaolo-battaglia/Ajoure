@@ -10,7 +10,7 @@ import { BRUSH_TOOLS } from './tools.js';
 
 /** Single-key tool shortcuts (SPEC §6.5). */
 const TOOL_KEYS = /** @type {Record<string, ToolId>} */ ({
-  h: 'hand', z: 'zoom', b: 'bucket', w: 'wood', e: 'hole', r: 'revert', c: 'connector', x: 'separator',
+  h: 'hand', z: 'zoom', b: 'bucket', g: 'engrave', w: 'wood', e: 'hole', r: 'revert', c: 'connector', x: 'separator',
 });
 
 const PINCH_K = 0.01; // ctrl+wheel (pinch) sensitivity
@@ -29,6 +29,7 @@ export class NavigationInput {
    *   onToolMove?: (e: PointerEvent, p: Pt) => void,
    *   onToolUp?: (e: PointerEvent, p: Pt) => void,
    *   onHover?: (p: Pt|null) => void,
+   *   toolCursor?: () => string|null,
    * }} hooks
    *   onClick: a click (no drag) with Hand/Zoom; return true if it was handled (e.g. a marker).
    *   onTool*: presses with an editing tool, in image px. onHover: pointer over the canvas (null = left it).
@@ -77,8 +78,8 @@ export class NavigationInput {
     else if (this.drag?.kind === 'zoom' && this.drag.moved) c = 'ew-resize';
     else if (this.space || this.tool === 'hand') c = 'grab';
     else if (this.tool === 'zoom') c = this.alt ? 'zoom-out' : 'zoom-in';
-    else if (this.tool === 'bucket') c = 'crosshair';
-    else if (BRUSH_TOOLS.includes(this.tool)) c = 'none'; // the brush circle is drawn on the canvas
+    else if (this.tool === 'bucket' || this.tool === 'engrave') c = 'crosshair';
+    else if (BRUSH_TOOLS.includes(this.tool)) c = this.hooks.toolCursor?.() || 'none'; // the brush circle is drawn on the canvas
     this.stage.dataset.cursor = c;
   }
 
@@ -223,7 +224,10 @@ export class NavigationInput {
           this.overPin = over;
           this.updateCursor();
         }
-        if (!navTool && !this.space) this.hooks.onHover?.(this.toImage(p));
+        if (!navTool && !this.space) {
+          this.hooks.onHover?.(this.toImage(p));
+          if (this.hooks.toolCursor) this.updateCursor();
+        }
       }
       return;
     }

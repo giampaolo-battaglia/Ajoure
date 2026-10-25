@@ -58,7 +58,7 @@ test('the dot of the i in "Julie" is flagged as an island', () => {
 
 test('every issue has plain-words text, a location and a status', () => {
   for (const i of res.issues) {
-    assert.match(i.label, /^(Leak|Island|Speck), /);
+    assert.match(i.label, /^(Leak|Island|Speck|Thin wood|Near-touch|Speck hole|Open outline), /);
     assert.ok(i.detail.length > 10);
     assert.equal(i.status, 'open');
     assert.ok(i.anchor[0] >= 0 && i.anchor[0] < w && i.anchor[1] >= 0 && i.anchor[1] < h);

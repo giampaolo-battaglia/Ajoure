@@ -19,8 +19,13 @@ with every edit re-checked automatically.
 - Undo / redo: ⌘Z / ⇧⌘Z (also two buttons by the file name), 100 steps, covering strokes, bucket clicks and quick fixes.
 - After each edit the image is re-scanned in the background (pins, islands, Wood/Hole view update in ~1 s; strokes show instantly).
 
+## Added 2026-10-22
+- Connector: after placing a bridge, drag the round handle at its middle to curve it (replaces the straight one, one undo step).
+- **History** popover (clock button next to undo/redo): every step listed; click one to jump back or forward.
+- The Navigator thumbnail shows your paint (and the adjusted trace) in Design view.
+
 ## Out of scope
-- Curving a connector by dragging its midpoint; decorative bridges (v3).
+- Decorative bridges (v3).
 - Incremental (dirty-rect) re-analysis — full re-scan for now; target < 300 ms comes later.
 - Saving edits to a project file (milestone 7); edits live until the page reloads.
 
